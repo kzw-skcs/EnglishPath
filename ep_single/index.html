@@ -284,7 +284,20 @@ scrollbar-width: none;
 #screen-welcome {
   background: radial-gradient(ellipse at 20% 15%, #0d2a4a 0%, var(--bg-deep) 55%),
               radial-gradient(ellipse at 80% 85%, #0a1f14 0%, transparent 50%);
-  justify-content: center; align-items: center; padding: 32px 24px;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  align-items: center;
+  padding: 0;
+}
+.welcome-inner {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 48px 24px;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 .welcome-inner { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 24px; }
 .logo-mark { display: flex; align-items: center; gap: 12px; justify-content: center; margin-bottom: 4px; }
@@ -575,6 +588,46 @@ html, body { width: 100vw; height: 100vh; overflow: hidden; }
 .screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: none; flex-direction: column; overflow: hidden; }
 .screen.active { display: flex; }
 .scroll-content { flex: 1; overflow-y: scroll; -webkit-overflow-scrolling: touch; }
+
+/* ===== GLOBAL IPHONE SAFARI FIXES ===== */
+* { -webkit-tap-highlight-color: transparent; }
+html { 
+  width: 100%; 
+  height: 100%; 
+}
+body { 
+  width: 100%; 
+  height: 100%; 
+  overflow: hidden; 
+  position: relative;
+}
+.screen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: none !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.screen.active {
+  display: flex !important;
+}
+.scroll-content {
+  flex: 1 1 auto !important;
+  overflow-y: scroll !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+.chat-area {
+  flex: 1 1 auto !important;
+  overflow-y: scroll !important;
+  -webkit-overflow-scrolling: touch !important;
+  min-height: 0;
+}
+
 </style>
 </head>
 <body>

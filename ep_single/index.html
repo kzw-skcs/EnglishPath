@@ -920,6 +920,24 @@ body {
       </div>
     </div>
     <div class="text-xs text-muted text-center" style="line-height:1.8">APIキーはこのデバイスのブラウザ内にのみ保存されます。<br>外部サーバーには送信されません。</div>
+
+    <!-- Data Export/Import -->
+    <div>
+      <div class="section-title">データのバックアップ</div>
+      <div class="card card-pad flex-col gap-12">
+        <p class="text-sm text-sec" style="line-height:1.7">学習データをJSONファイルとして保存・復元できます。デバイス変更時や誤削除の際に便利です。</p>
+        <button class="btn-primary" onclick="DataManager.export()" style="background:linear-gradient(135deg,#4da6ff,#a855f7)">
+          📤 データをエクスポート
+        </button>
+        <div>
+          <div class="field-label">データをインポート</div>
+          <input type="file" accept=".json" id="importFileInput" style="display:none" onchange="DataManager.import(this)">
+          <button class="btn-secondary mt-8" onclick="document.getElementById('importFileInput').click()">
+            📥 JSONファイルを選択して復元
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1254,16 +1272,22 @@ function calcTOEICScore(answers, questions) {
   const totalByType = { grammar:0, vocab:0, reading:0, listening:0, spelling:0 };
   let correct = 0;
   questions.forEach((q, i) => {
-    const type = q.type || q.id[0] === 'g' ? 'grammar' : q.id[0] === 'v' ? 'vocab' : q.id[0] === 'r' ? 'reading' : q.id[0] === 'l' ? 'listening' : 'spelling';
-    // infer type from id prefix
-    const t = q.id.startsWith('g') ? 'grammar' : q.id.startsWith('v') ? 'vocab' : q.id.startsWith('r') ? 'reading' : q.id.startsWith('l') ? 'listening' : 'spelling';
+    // Correctly infer type from id prefix
+    let t = 'grammar';
+    if (q.id.startsWith('v')) t = 'vocab';
+    else if (q.id.startsWith('r')) t = 'reading';
+    else if (q.id.startsWith('l')) t = 'listening';
+    else if (q.id.startsWith('s')) t = 'spelling';
     totalByType[t]++;
-    if (answers[i]?.correct) { byType[t]++; correct++; }
+    if (answers[i] && answers[i].correct) { byType[t]++; correct++; }
   });
-  const pct = correct / questions.length;
+  const pct = questions.length > 0 ? correct / questions.length : 0;
   const toeic = Math.round(200 + pct * 790);
   const pcts = {};
-  Object.keys(byType).forEach(k => { pcts[k] = totalByType[k] > 0 ? Math.round(byType[k] / totalByType[k] * 100) : 0; });
+  Object.keys(byType).forEach(k => {
+    pcts[k] = totalByType[k] > 0 ? Math.round(byType[k] / totalByType[k] * 100) : 0;
+  });
+  console.log('Test result:', { toeic, correct, total: questions.length, pcts });
   return { toeic, correct, total: questions.length, pcts, byType, totalByType };
 }
 
@@ -1440,11 +1464,15 @@ const EP = {
   addTestResult(type, result) {
     if (!this.user) return;
     if (!this.user.testHistory) this.user.testHistory = [];
-    this.user.testHistory.unshift({ date: new Date().toISOString(), type, ...result });
+    const record = { date: new Date().toISOString(), type, toeic: result.toeic, correct: result.correct, total: result.total, pcts: result.pcts };
+    this.user.testHistory.unshift(record);
     if (this.user.testHistory.length > 20) this.user.testHistory = this.user.testHistory.slice(0, 20);
     if (result.toeic) this.updateTOEIC(result.toeic);
     this.updateSkills(result.pcts || {});
+    this.updateStreak();
     this.saveUser();
+    console.log('Saved test result:', record);
+    console.log('User skills after:', this.user.skills);
   },
 
   // ── Add session ──
@@ -2092,8 +2120,18 @@ const TestModule = {
       html += `<div class="test-expl correct-expl">✅ 正解！ ${escHtml(q.expl||'')}</div>`;
     }
 
+    // 次へボタン（回答後のみ表示）
+    if (this.answers[this.current] !== undefined) {
+      const isLast = this.current >= this.questions.length - 1;
+      html += `<button class="btn-primary mt-16" style="margin-top:16px" onclick="TestModule.next()">
+        ${isLast ? '結果を見る 🏆' : '次の問題へ →'}
+      </button>`;
+    }
+
     html += `</div>`;
     scroll.innerHTML = html;
+    // Scroll to top after rendering
+    if (scroll) scroll.scrollTop = 0;
   },
 
   async playAudio(idx) {
@@ -2111,8 +2149,15 @@ const TestModule = {
     const correct = idx === q.ans;
     this.answers[this.current] = { selected: idx, correct };
     this.render();
-    const delay = correct ? 700 : 2200;
-    setTimeout(() => { this.current++; this.render(); }, delay);
+    // Show 次へ button - no auto-advance
+  },
+
+  next() {
+    this.current++;
+    this.render();
+    // Scroll to top of test area
+    const el = document.getElementById('testScroll');
+    if (el) el.scrollTop = 0;
   },
 
   renderResults() {
@@ -2152,7 +2197,7 @@ const TestModule = {
         ${skillBars}
       </div>
       <div class="flex-col gap-8" style="margin-top:12px">
-        <button class="btn-primary" onclick="Router.go('home', {onEnter: HomeModule.refresh})">ホームに反映</button>
+        <button class="btn-primary" onclick="Router.go('home',{onEnter:()=>HomeModule.refresh()})">ホームに反映 🏠</button>
         <button class="btn-secondary" onclick="TestModule.init('${this.type}')">もう一度テスト</button>
         ${this.type !== 'mock' ? `<button class="btn-secondary" style="border-color:rgba(245,200,66,0.4);color:var(--accent-gold)" onclick="TestModule.init('mock')">模擬試験に挑戦</button>` : ''}
       </div>`;
@@ -2458,9 +2503,10 @@ const HomeModule = {
     document.getElementById('homeUserName').textContent = user.name || 'Guest';
     document.getElementById('homeUserAvatar').textContent = user.avatar || '🎓';
     document.getElementById('homeToeicScore').textContent = user.toeicScore || '---';
-    document.getElementById('homeStreak').textContent = (user.streak || 0) + '日連続';
+    document.getElementById('homeStreak').textContent = (user.streak || 0);
     const lv = ConvModule.LEVELS.find(l => l.id === (user.level||1));
-    document.getElementById('homeConvLevel').textContent = lv?.name || '';
+    const convLvEl = document.getElementById('homeConvLevel');
+    if (convLvEl) convLvEl.textContent = lv?.name || '';
 
     const sk = user.skills || {};
     const fields = [
@@ -2758,6 +2804,85 @@ AccountModule.create = function() {
   }, 350);
 };
 
+
+// ============================================================
+//  DATA MANAGER — Export / Import
+// ============================================================
+const DataManager = {
+  export() {
+    const users = EP.users || [];
+    if (!users.length) { showToast('エクスポートするデータがありません'); return; }
+    const data = {
+      version: 'ep_v4',
+      exportedAt: new Date().toISOString(),
+      users: users,
+      config: {
+        accent: EP.config.accent,
+        // APIキーはセキュリティのため含めない
+      }
+    };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const date = new Date().toLocaleDateString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g,'-');
+    a.download = `EnglishPath_backup_${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('✅ データをエクスポートしました');
+  },
+
+  import(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.version || !data.users) {
+          showToast('❌ 無効なファイルです');
+          return;
+        }
+        // Merge users - keep existing, add new ones
+        const existing = EP.users || [];
+        const existingIds = new Set(existing.map(u => u.id));
+        let added = 0, updated = 0;
+        data.users.forEach(u => {
+          if (existingIds.has(u.id)) {
+            // Update existing user data
+            const idx = existing.findIndex(e => e.id === u.id);
+            existing[idx] = { ...existing[idx], ...u };
+            updated++;
+          } else {
+            existing.push(u);
+            added++;
+          }
+        });
+        EP.users = existing;
+        EP.saveUsers();
+        if (data.config?.accent) {
+          EP.config.accent = data.config.accent;
+          EP.saveConfig();
+        }
+        showToast(`✅ インポート完了（${added}件追加、${updated}件更新）`);
+        // Refresh if current user was updated
+        if (EP.currentUser) {
+          EP.currentUser = EP.users.find(u => u.id === EP.currentUser.id) || EP.currentUser;
+          HomeModule.refresh();
+        }
+        initSettings();
+      } catch(err) {
+        showToast('❌ ファイルの読み込みに失敗しました: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    input.value = '';
+  },
+};
 </script>
 </body>
 </html>

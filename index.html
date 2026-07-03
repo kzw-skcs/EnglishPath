@@ -717,6 +717,7 @@ body {
           <div class="hg-name">こんにちは、<span class="text-teal" id="homeUserName">Guest</span></div>
           <div class="hg-sub">今日も英語を楽しもう 🎯</div>
         </div>
+        <button class="home-settings-btn" onclick="updateApp()" title="アプリを最新版に更新">🔄</button>
         <button class="home-settings-btn" onclick="Router.go('settings',{onEnter:initSettings})">⚙️</button>
       </div>
       <div class="home-score-row">
@@ -956,6 +957,14 @@ body {
       </div>
     </div>
     <div class="text-xs text-muted text-center" style="line-height:1.8">APIキーはこのデバイスのブラウザ内にのみ保存されます。<br>外部サーバーには送信されません。</div>
+
+    <div>
+      <div class="section-title">アプリの更新</div>
+      <div class="card card-pad flex-col gap-12">
+        <p class="text-sm text-sec" style="line-height:1.7">表示や動作が古いままのときは、こちらから最新版を読み込めます。学習データやAPIキーは消えません。</p>
+        <button class="btn-primary" onclick="updateApp()">🔄 アプリを更新</button>
+      </div>
+    </div>
 
     <!-- Data Export/Import -->
     <div>
@@ -1325,6 +1334,25 @@ function calcTOEICScore(answers, questions) {
   });
   console.log('Test result:', { toeic, correct, total: questions.length, pcts });
   return { toeic, correct, total: questions.length, pcts, byType, totalByType };
+}
+
+// ============================================================
+//  APP UPDATE — 🔄 更新ボタン（SW解除＋キャッシュ削除＋リロード）
+//  学習データ(localStorage)には触れない
+// ============================================================
+async function updateApp() {
+  showOverlay('アプリを更新中...');
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch(e) {}
+  location.href = location.pathname + '?v=' + Date.now();
 }
 
 // ============================================================

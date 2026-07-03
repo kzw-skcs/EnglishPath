@@ -1940,32 +1940,72 @@ const VoiceLoop = {
 //  CLAUDE API
 // ============================================================
 
+// Anthropic API requires the FIRST message to be role "user".
+// Our conversations start with the teacher's greeting (assistant), which
+// made every AI lesson / free talk call fail with a 400 error.
+function sanitizeForClaude(messages) {
+  const out = [];
+  for (const m of messages) {
+    if (!m || !m.content) continue;
+    if (out.length && out[out.length - 1].role === m.role) {
+      // merge consecutive same-role messages (also an API requirement)
+      out[out.length - 1] = { role: m.role, content: out[out.length - 1].content + '\n' + m.content };
+    } else {
+      out.push({ role: m.role, content: m.content });
+    }
+  }
+  if (out.length && out[0].role !== 'user') {
+    out.unshift({ role: 'user', content: '(The student has just joined the conversation. Continue naturally.)' });
+  }
+  return out;
+}
+
+// Try the cached/known-good model first, fall back if a model is retired
+const CLAUDE_MODELS = ['claude-sonnet-4-20250514', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
+
 async function callClaude(systemPrompt, messages, maxTokens = 500) {
   const key = EP.config.claudeKey;
   if (!key) throw new Error('Claude API key not set');
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages,
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.content[0].text;
-  } catch(e) {
-    showToast('APIエラー: ' + e.message);
-    throw e;
+  const msgs = sanitizeForClaude(messages);
+  const cached = localStorage.getItem('ep_model');
+  const candidates = cached ? [cached, ...CLAUDE_MODELS.filter(m => m !== cached)] : CLAUDE_MODELS;
+  let lastErr = null;
+  for (const model of candidates) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          system: systemPrompt,
+          messages: msgs,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        // model retired / not found -> try next candidate
+        const msg = (data.error.message || '') + '';
+        if (data.error.type === 'not_found_error' || /model/i.test(msg) && /not_found|deprecat|invalid/i.test(msg)) {
+          lastErr = new Error(msg); continue;
+        }
+        throw new Error(msg);
+      }
+      localStorage.setItem('ep_model', model);
+      return data.content[0].text;
+    } catch(e) {
+      if (e instanceof TypeError) { lastErr = e; break; } // network error: don't hammer other models
+      lastErr = e;
+      if (!/not_found|deprecat|model/i.test(e.message || '')) break;
+    }
   }
+  showToast('APIエラー: ' + (lastErr ? lastErr.message : '不明なエラー'));
+  throw (lastErr || new Error('API error'));
 }
 
 // ============================================================

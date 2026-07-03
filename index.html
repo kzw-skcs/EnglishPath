@@ -1996,8 +1996,14 @@ async function callClaude(systemPrompt, messages, maxTokens = 500) {
         }
         throw new Error(msg);
       }
+      // Newer models can return multiple content blocks (e.g. thinking + text).
+      // Extract ONLY text blocks; an empty result means this model is unusable here.
+      const txt = Array.isArray(data.content)
+        ? data.content.filter(b => b && b.type === 'text').map(b => b.text || '').join('').trim()
+        : '';
+      if (!txt) { lastErr = new Error('モデル ' + model + ' から空の応答'); continue; }
       localStorage.setItem('ep_model', model);
-      return data.content[0].text;
+      return txt;
     } catch(e) {
       if (e instanceof TypeError) { lastErr = e; break; } // network error: don't hammer other models
       lastErr = e;

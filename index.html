@@ -633,6 +633,18 @@ body {
   min-height: 0;
 }
 
+
+/* ===== Voice conversation (hands-free) ===== */
+.voice-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-card,#fff);border-top:1px solid rgba(0,0,0,.06)}
+.voice-orb{width:56px;height:56px;min-width:56px;border-radius:50%;border:none;font-size:24px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#5eead4,#2dd4bf);color:#fff;box-shadow:0 2px 10px rgba(45,212,191,.4);cursor:pointer;transition:transform .15s}
+.voice-orb:active{transform:scale(.92)}
+.voice-orb.listening{background:linear-gradient(135deg,#34d399,#10b981);animation:orbPulse 1.4s infinite}
+.voice-orb.processing{background:linear-gradient(135deg,#fbbf24,#f59e0b)}
+.voice-orb.speaking{background:linear-gradient(135deg,#60a5fa,#3b82f6);animation:orbPulse 1.4s infinite}
+@keyframes orbPulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,.45)}70%{box-shadow:0 0 0 16px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+.voice-status{flex:1;font-size:12px;line-height:1.5;color:var(--text-sec,#667085)}
+.hint-btn{border:none;border-radius:14px;padding:8px 12px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;cursor:pointer;white-space:nowrap}
+.cm-hint{background:#fef9c3 !important;color:#713f12 !important;border:1px dashed #eab308}
 </style>
 </head>
 <body>
@@ -770,8 +782,13 @@ body {
     <p>⏱️ セッション終了！</p>
     <button class="btn-end" onclick="ConvModule.endSession()">添削を見る →</button>
   </div>
+  <div class="voice-bar" id="convVoiceBar">
+    <button class="voice-orb" id="convOrb" onclick="ConvModule.toggleVoice()">🎙️</button>
+    <div class="voice-status" id="convVoiceStatus">🎙️をタップして音声会話をはじめる</div>
+    <button class="hint-btn hidden" id="convHintBtn" onclick="ConvModule.showHint()">🇯🇵 ヒント</button>
+  </div>
   <div class="conv-input-bar" id="convInputArea">
-    <input type="text" class="conv-text-inp" id="convTextInp" placeholder="英語で入力またはマイクを使用..." onkeydown="if(event.key==='Enter')ConvModule.sendText()">
+    <input type="text" class="conv-text-inp" id="convTextInp" placeholder="キーボードで入力する場合はこちら..." onkeydown="if(event.key==='Enter')ConvModule.sendText()">
     <button class="mic-btn" id="micBtn" onclick="ConvModule.toggleMic()">🎤</button>
     <button class="send-btn" onclick="ConvModule.sendText()">➤</button>
   </div>
@@ -852,11 +869,15 @@ body {
 
 <div class="screen" id="screen-freechat">
   <div class="freechat-header">
-    <button class="back-btn" onclick="Router.back()">←</button>
+    <button class="back-btn" onclick="FreeChatModule.leave()">←</button>
     <div class="fc-friend-info"><div class="fc-friend-name">😊 英語フレンド</div><div class="fc-friend-sub">あなたのことを覚えています 🧠</div></div>
     <button class="fc-memory-btn" onclick="showFriendMemory()">記憶 💭</button>
   </div>
   <div class="chat-area" id="freeChatMsgs"></div>
+  <div class="voice-bar" id="freeVoiceBar">
+    <button class="voice-orb" id="freeOrb" onclick="FreeChatModule.toggleVoice()">🎙️</button>
+    <div class="voice-status" id="freeVoiceStatus">🎙️をタップして音声会話をはじめる</div>
+  </div>
   <div class="conv-input-bar">
     <input type="text" class="conv-text-inp" id="freeChatInp" placeholder="何でも話しかけてみて！" onkeydown="if(event.key==='Enter')FreeChatModule.sendText()">
     <button class="mic-btn" id="freeMicBtn" onclick="FreeChatModule.toggleMic()">🎤</button>
@@ -1497,14 +1518,26 @@ const EP = {
 // ============================================================
 
 const AudioEngine = {
-  currentAudio: null,
+  el: null,            // single reusable <audio> element (Safari autoplay-safe)
+  currentUrl: null,
   isSpeaking: false,
+  _unlocked: false,
 
+  ensureEl() {
+    if (!this.el) {
+      this.el = new Audio();
+      this.el.setAttribute('playsinline', '');
+      this.el.preload = 'auto';
+    }
+    return this.el;
+  },
+
+  // Returns a Promise that resolves when playback finishes
   async speak(text, opts = {}) {
     if (!text) return;
     this.stop();
     const key = EP.config.openaiKey;
-    if (!key) { this.speakWeb(text, opts); return; }
+    if (!key) { return this.speakWeb(text, opts); }
     try {
       const voice = opts.voice || (EP.config.accent === 'US' ? 'alloy' : 'fable');
       const speed = opts.speed || 1.0;
@@ -1516,43 +1549,59 @@ const AudioEngine = {
       if (!res.ok) throw new Error('TTS failed');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      this.currentAudio = new Audio(url);
+      if (this.currentUrl) { try { URL.revokeObjectURL(this.currentUrl); } catch(e){} }
+      this.currentUrl = url;
+      const el = this.ensureEl();
+      el.src = url;
       this.isSpeaking = true;
-      this.currentAudio.onended = () => { this.isSpeaking = false; URL.revokeObjectURL(url); if(opts.onEnd) opts.onEnd(); };
-      this.currentAudio.onerror = () => { this.isSpeaking = false; };
-      await this.currentAudio.play();
+      await new Promise(resolve => {
+        const done = () => { this.isSpeaking = false; this._resolvePending = null; resolve(); };
+        this._resolvePending = done;
+        el.onended = () => { if (opts.onEnd) opts.onEnd(); done(); };
+        el.onerror = () => done();
+        el.play().catch(err => { console.warn('Audio play blocked:', err); done(); });
+      });
     } catch(e) {
       console.warn('TTS error, fallback to Web Speech', e);
-      this.speakWeb(text, opts);
+      await this.speakWeb(text, opts);
     }
   },
 
   speakWeb(text, opts = {}) {
-    if (!window.speechSynthesis) return;
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = EP.config.accent === 'US' ? 'en-US' : 'en-GB';
-    utt.rate = opts.speed || 0.9;
-    utt.onend = () => { this.isSpeaking = false; if(opts.onEnd) opts.onEnd(); };
-    this.isSpeaking = true;
-    window.speechSynthesis.speak(utt);
+    return new Promise(resolve => {
+      if (!window.speechSynthesis) { resolve(); return; }
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang = EP.config.accent === 'US' ? 'en-US' : 'en-GB';
+      utt.rate = opts.speed || 0.9;
+      utt.onend = () => { this.isSpeaking = false; if (opts.onEnd) opts.onEnd(); resolve(); };
+      utt.onerror = () => { this.isSpeaking = false; resolve(); };
+      this.isSpeaking = true;
+      window.speechSynthesis.speak(utt);
+    });
   },
 
   stop() {
-    if (this.currentAudio) { this.currentAudio.pause(); this.currentAudio = null; }
+    if (this.el) { try { this.el.pause(); } catch(e){} }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (this._resolvePending) { const r = this._resolvePending; this._resolvePending = null; r(); }
     this.isSpeaking = false;
   },
 
-  // Unlock audio context on user tap (Safari requirement)
+  // MUST be called synchronously inside a user tap.
+  // Activates the shared <audio> element so later AI replies auto-play on Safari/iOS.
   unlock() {
     if (this._unlocked) return;
     try {
+      const el = this.ensureEl();
+      // short silent WAV (data URI) — playing this "blesses" the element
+      el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=';
+      el.play().catch(()=>{});
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const buf = ctx.createBuffer(1, 1, 22050);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.connect(ctx.destination);
-      src.start(0);
+      const srcNode = ctx.createBufferSource();
+      srcNode.buffer = buf;
+      srcNode.connect(ctx.destination);
+      srcNode.start(0);
       ctx.resume();
       this._unlocked = true;
     } catch(e) {}
@@ -1560,9 +1609,7 @@ const AudioEngine = {
 
   // Speak listening question (for test)
   async speakListeningQ(audioDesc) {
-    const prefix = EP.config.accent === 'US'
-      ? "Listen carefully. " : "Listen carefully. ";
-    await this.speak(prefix + audioDesc, { speed: 0.9 });
+    await this.speak("Listen carefully. " + audioDesc, { speed: 0.9 });
   },
 };
 
@@ -1580,9 +1627,10 @@ const STT = {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this.audioChunks = [];
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus' : 'audio/webm';
-      this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/mp4']
+        .find(t => MediaRecorder.isTypeSupported(t)) || '';
+      this.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      this._mimeType = mimeType;
       this.mediaRecorder.ondataavailable = e => { if (e.data.size > 0) this.audioChunks.push(e.data); };
       this.mediaRecorder.start(250);
       this.isRecording = true;
@@ -1603,7 +1651,7 @@ const STT = {
         stream?.getTracks().forEach(t => t.stop());
         this.isRecording = false;
         document.getElementById('recBar')?.classList.remove('on');
-        const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        const blob = new Blob(this.audioChunks, { type: this._mimeType || 'audio/mp4' });
         const text = await this.transcribe(blob);
         resolve(text);
       };
@@ -1611,13 +1659,14 @@ const STT = {
     });
   },
 
-  async transcribe(blob) {
+  async transcribe(blob, quiet = false) {
     const key = EP.config.openaiKey;
     if (!key) return null;
-    showOverlay('音声を認識中...');
+    if (!quiet) showOverlay('音声を認識中...');
     try {
+      const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
       const fd = new FormData();
-      fd.append('file', blob, 'audio.webm');
+      fd.append('file', blob, 'audio.' + ext);
       fd.append('model', 'whisper-1');
       fd.append('language', 'en');
       fd.append('response_format', 'json');
@@ -1627,13 +1676,152 @@ const STT = {
         body: fd
       });
       const data = await res.json();
-      hideOverlay();
+      if (!quiet) hideOverlay();
       return data.text || null;
     } catch(e) {
-      hideOverlay();
+      if (!quiet) hideOverlay();
       showToast('音声認識エラー: ' + e.message);
       return null;
     }
+  },
+};
+
+// ============================================================
+//  VOICE LOOP — hands-free conversation engine
+//  listen (VAD auto-stop) -> Whisper -> module callback -> TTS -> listen...
+// ============================================================
+
+const VoiceLoop = {
+  active: false,
+  state: 'idle',   // idle | listening | processing | speaking
+  stream: null, ctx: null, analyser: null, srcNode: null,
+  recorder: null, chunks: [], monitorTimer: null,
+  handler: null,   // { onUtterance(text):Promise, onState(state), silenceMs }
+
+  async start(handler) {
+    if (this.active) return true;
+    this.handler = handler;
+    AudioEngine.unlock();
+    // Create AudioContext synchronously while still inside the user tap (iOS requirement)
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx.resume();
+    } catch(e) { this.ctx = null; }
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true }
+      });
+    } catch(e) {
+      showToast('マイクへのアクセスが許可されていません');
+      if (this.ctx) { try { this.ctx.close(); } catch(err){} this.ctx = null; }
+      return false;
+    }
+    try {
+      if (this.ctx.state === 'suspended') await this.ctx.resume();
+      this.srcNode = this.ctx.createMediaStreamSource(this.stream);
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.srcNode.connect(this.analyser);
+    } catch(e) { this.analyser = null; }
+    this.active = true;
+    this.listen();
+    return true;
+  },
+
+  stop() {
+    if (!this.active && !this.stream) { return; }
+    this.active = false;
+    clearInterval(this.monitorTimer);
+    try {
+      if (this.recorder && this.recorder.state !== 'inactive') {
+        this.recorder.onstop = null;
+        this.recorder.stop();
+      }
+    } catch(e) {}
+    this.recorder = null;
+    if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+    if (this.ctx) { try { this.ctx.close(); } catch(e){} this.ctx = null; }
+    this.analyser = null;
+    this.setState('idle');
+    this.handler = null;
+  },
+
+  setState(s) {
+    this.state = s;
+    if (this.handler && this.handler.onState) this.handler.onState(s);
+  },
+
+  rms() {
+    if (!this.analyser) return 0;
+    const buf = new Uint8Array(this.analyser.fftSize);
+    this.analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    return Math.sqrt(sum / buf.length);
+  },
+
+  listen() {
+    if (!this.active) return;
+    this.chunks = [];
+    const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/mp4']
+      .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+    try {
+      this.recorder = mimeType
+        ? new MediaRecorder(this.stream, { mimeType })
+        : new MediaRecorder(this.stream);
+    } catch(e) {
+      showToast('録音を開始できませんでした'); this.stop(); return;
+    }
+    this.recorder.ondataavailable = e => { if (e.data.size > 0) this.chunks.push(e.data); };
+    this.recorder.onstop = () => this.onRecStop(mimeType);
+    this.recorder.start(250);
+    this.setState('listening');
+
+    // --- VAD: wait for speech, auto-stop after silence ---
+    const silenceMs = (this.handler && this.handler.silenceMs) || 1300;
+    const SPEECH_T = 0.022, SILENCE_T = 0.012;
+    let spoke = false, lastVoice = Date.now();
+    const started = Date.now();
+    clearInterval(this.monitorTimer);
+    this.monitorTimer = setInterval(() => {
+      if (!this.active || !this.recorder || this.recorder.state === 'inactive') {
+        clearInterval(this.monitorTimer); return;
+      }
+      if (!this.analyser) return; // no VAD support -> manual stop only
+      const level = this.rms();
+      if (level > SPEECH_T) { spoke = true; lastVoice = Date.now(); }
+      else if (spoke && level > SILENCE_T) { lastVoice = Date.now(); }
+      const now = Date.now();
+      if (spoke && now - lastVoice > silenceMs) { this.finishUtterance(); }
+      else if (spoke && now - started > 45000) { this.finishUtterance(); }
+      else if (!spoke && now - started > 60000) {
+        showToast('しばらく声が聞こえなかったので一時停止しました。🎙️で再開できます');
+        this.stop();
+      }
+    }, 100);
+  },
+
+  finishUtterance() {
+    clearInterval(this.monitorTimer);
+    if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
+  },
+
+  async onRecStop(mimeType) {
+    if (!this.active) return;
+    this.setState('processing');
+    const blob = new Blob(this.chunks, { type: mimeType || 'audio/mp4' });
+    this.chunks = [];
+    if (blob.size < 2000) { this.listen(); return; } // too short — listen again
+    const text = await STT.transcribe(blob, true);
+    if (!this.active) return;
+    const clean = (text || '').trim();
+    // Whisper sometimes hallucinates on silence — ignore junk
+    const junk = /^(thank you\.?|thanks for watching.*|you|\.+)$/i;
+    if (!clean || clean.length < 2 || junk.test(clean)) { this.listen(); return; }
+    if (this.handler && this.handler.onUtterance) {
+      try { await this.handler.onUtterance(clean); } catch(e) { console.warn(e); }
+    }
+    if (this.active) this.listen();
   },
 };
 
@@ -1707,9 +1895,26 @@ const Router = {
   current: 'welcome',
   history: [],
 
+  // Default onEnter handlers so back() restores each screen correctly
+  defaultEnter(id) {
+    const map = {
+      'home': () => HomeModule.refresh(),
+      'lesson-select': () => LessonSelectModule.render(),
+      'freechat': () => FreeChatModule.init(),
+      'settings': () => initSettings(),
+      'test-select': () => renderTestHistory(),
+      'accounts': () => AccountModule.renderList(),
+    };
+    return map[id];
+  },
+
   go(id, opts = {}) {
     const next = document.getElementById('screen-' + id);
     if (!next) { console.warn('Screen not found: screen-' + id); return; }
+
+    // Leaving a screen always stops any ongoing voice loop / audio
+    if (typeof VoiceLoop !== 'undefined') VoiceLoop.stop();
+    if (typeof AudioEngine !== 'undefined') AudioEngine.stop();
 
     // Hide ALL screens using inline style (bypasses all CSS issues)
     document.querySelectorAll('.screen').forEach(s => {
@@ -1721,16 +1926,21 @@ const Router = {
     next.style.display = 'flex';
     next.classList.add('active');
 
-    this.history.push(this.current);
+    // History: never push when navigating back, to the same screen, or from welcome.
+    // 'home' is the root: arriving there resets history.
+    if (!opts.noHistory && this.current !== id && this.current !== 'welcome') {
+      this.history.push(this.current);
+    }
+    if (id === 'home') this.history = [];
     this.current = id;
 
     if (opts.onEnter) opts.onEnter();
+    else { const de = this.defaultEnter(id); if (de) de(); }
   },
 
   back() {
-    if (this.history.length === 0) return;
-    const prev = this.history.pop();
-    this.go(prev);
+    const prev = this.history.pop() || 'home';
+    this.go(prev, { noHistory: true });
   },
 
   // Initialize: hide all screens, show only the active one
@@ -1811,11 +2021,21 @@ const ConvModule = {
       if (this.remaining <= 0) { clearInterval(this.timerInterval); this.triggerEnd(); }
     }, 1000);
 
+    // Voice UI reset + kid-friendly setup
+    this.renderVoiceState('idle');
+    const hintBtn = document.getElementById('convHintBtn');
+    if (hintBtn) hintBtn.classList.toggle('hidden', !this.isKid());
+    document.getElementById('convVoiceBar')?.classList.remove('hidden');
+
     const greeting = this.getGreeting(lv);
     this.addMsg('teacher', greeting);
     this.messages.push({ role: 'assistant', content: greeting });
-    AudioEngine.speak(greeting);
+    AudioEngine.speak(greeting, this.ttsOpts());
   },
+
+  // ---- kid mode (幼児期・小学校低学年) ----
+  isKid() { return (EP.user?.level || 1) <= 2; },
+  ttsOpts() { return this.isKid() ? { speed: 0.85, voice: 'nova' } : {}; },
 
   updateTimer(s) {
     const el = document.getElementById('convTimer');
@@ -1828,8 +2048,10 @@ const ConvModule = {
   triggerEnd() {
     if (this.ended) return;
     this.ended = true;
+    VoiceLoop.stop();
     document.getElementById('convSessionEndBar').classList.remove('hidden');
     document.getElementById('convInputArea').classList.add('hidden');
+    document.getElementById('convVoiceBar')?.classList.add('hidden');
     showToast('⏱️ セッション時間終了！添削を確認しましょう');
   },
 
@@ -1856,7 +2078,11 @@ Instructions: ${lv.desc}
 - Ask ONE follow-up question to continue conversation
 - If student makes a clear grammar error, gently weave the correct form naturally into your response
 - Match vocabulary complexity to the TOEIC range
-- Never break character`;
+- The student speaks via voice recognition; transcripts may contain small errors — interpret them charitably and never scold transcription mistakes
+- Never break character${this.isKid() ? `
+- The student is a YOUNG CHILD. Be extremely cheerful and encouraging. Praise every attempt ("Great job!", "Wonderful!").
+- Use ONLY very simple words. Very short sentences (max 8 words each, max 2 sentences).
+- If the child is silent, confused, or answers in Japanese, respond warmly and give one easy English phrase to repeat, like: Say "I like cats!"` : ''}`;
   },
 
   async send(text) {
@@ -1869,11 +2095,65 @@ Instructions: ${lv.desc}
       this.hideTyping();
       this.addMsg('teacher', reply);
       this.messages.push({ role: 'assistant', content: reply });
-      AudioEngine.speak(reply);
+      if (VoiceLoop.active) {
+        VoiceLoop.setState('speaking');
+        await AudioEngine.speak(reply, this.ttsOpts());
+      } else {
+        AudioEngine.speak(reply, this.ttsOpts());
+      }
     } catch(e) {
       this.hideTyping();
       this.addMsg('teacher', "I'm sorry, I couldn't respond. Please check your API connection.");
     }
+  },
+
+  // ---- hands-free voice conversation ----
+  async toggleVoice() {
+    AudioEngine.unlock();
+    if (VoiceLoop.active) { VoiceLoop.stop(); this.renderVoiceState('idle'); return; }
+    if (this.ended) { showToast('セッションは終了しています'); return; }
+    const ok = await VoiceLoop.start({
+      silenceMs: this.isKid() ? 2000 : 1300,
+      onState: s => this.renderVoiceState(s),
+      onUtterance: async text => { await this.send(text); },
+    });
+    if (!ok) this.renderVoiceState('idle');
+  },
+
+  renderVoiceState(s) {
+    const orb = document.getElementById('convOrb');
+    const st = document.getElementById('convVoiceStatus');
+    if (!orb || !st) return;
+    orb.classList.remove('listening','processing','speaking');
+    if (s === 'listening') { orb.textContent = '🎧'; orb.classList.add('listening'); st.textContent = '聞いています…英語で話してね（話し終わると自動で送信）'; }
+    else if (s === 'processing') { orb.textContent = '⏳'; orb.classList.add('processing'); st.textContent = '考えています…'; }
+    else if (s === 'speaking') { orb.textContent = '🔊'; orb.classList.add('speaking'); st.textContent = '先生が話しています…'; }
+    else { orb.textContent = '🎙️'; st.textContent = '🎙️をタップして音声会話をはじめる'; }
+  },
+
+  // ---- 日本語ヒント（子ども向け） ----
+  async showHint() {
+    AudioEngine.unlock();
+    if (VoiceLoop.active) VoiceLoop.stop();
+    const lastT = [...this.messages].reverse().find(m => m.role === 'assistant');
+    if (!lastT) return;
+    showOverlay('ヒントを考えています...');
+    try {
+      const hint = await callClaude(
+        'あなたは子ども向け英会話のアシスタントです。英語の先生の発言に対して、子どもがどう答えればよいかを日本語でやさしく説明し、答え方の英語の例文を1つ示してください。形式:「先生は「〜」と聞いているよ。たとえば "..." と言ってみよう！」。2文以内、ひらがな多めで。',
+        [{ role: 'user', content: lastT.content }], 200);
+      hideOverlay();
+      this.addHintMsg(hint);
+    } catch(e) { hideOverlay(); showToast('ヒントを取得できませんでした'); }
+  },
+
+  addHintMsg(text) {
+    const c = document.getElementById('chatMsgs');
+    const div = document.createElement('div');
+    div.className = 'chat-msg cm-teacher';
+    div.innerHTML = `<div class="cm-avatar cma-teacher">🇯🇵</div><div class="cm-body"><div class="cm-bubble cm-hint">${escHtml(text)}</div></div>`;
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
   },
 
   addMsg(role, text) {
@@ -1885,7 +2165,7 @@ Instructions: ${lv.desc}
       <div class="cm-avatar ${isTeacher ? 'cma-teacher' : 'cma-user'}">${isTeacher ? '👩‍🏫' : '🙋'}</div>
       <div class="cm-body">
         <div class="cm-bubble">${escHtml(text)}</div>
-        ${isTeacher ? `<button class="cm-audio" onclick="AudioEngine.speak('${escJs(text)}')">🔊</button>` : ''}
+        ${isTeacher ? `<button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(text)}', ConvModule.ttsOpts())">🔊</button>` : ''}
       </div>`;
     c.appendChild(div);
     c.scrollTop = c.scrollHeight;
@@ -1905,12 +2185,16 @@ Instructions: ${lv.desc}
 
   async endSession() {
     clearInterval(this.timerInterval);
+    VoiceLoop.stop();
+    AudioEngine.stop();
     const duration = Math.round((Date.now() - this.startTime) / 60000);
     ReviewModule.build(this.messages, duration);
     Router.go('review');
   },
 
   async toggleMic() {
+    AudioEngine.unlock();
+    if (VoiceLoop.active) VoiceLoop.stop();
     const btn = document.getElementById('micBtn');
     if (STT.isRecording) {
       btn.classList.remove('recording');
@@ -2346,6 +2630,8 @@ const FreeChatModule = {
   isInitialized: false,
 
   init() {
+    AudioEngine.unlock(); // called from a user tap on the home card
+    this.renderVoiceState('idle');
     this.messages = [];
     const user = EP.user;
     if (!user) return;
@@ -2382,7 +2668,9 @@ Rules:
 - Naturally use English idioms and expressions
 - If they make a grammar mistake, occasionally (not always) say "btw, I think you meant..." naturally
 - Learn from the conversation and remember facts about them
-- NEVER give formal grammar lessons or act like a tutor in this mode`;
+- NEVER give formal grammar lessons or act like a tutor in this mode
+- The user may speak via voice recognition; transcripts can contain small errors — interpret them charitably${this.isKid() ? `
+- The user is a YOUNG CHILD. Be a super friendly, playful friend. Very simple words, very short sentences (max 8 words). Praise a lot. If they seem stuck, offer an easy phrase to say.` : ''}`;
   },
 
   async sendGreeting() {
@@ -2396,9 +2684,13 @@ Rules:
     const greeting = greetings[Math.floor(Math.random() * greetings.length)];
     this.renderMsg('friend', greeting);
     this.messages.push({ role: 'assistant', content: greeting });
-    AudioEngine.speak(greeting);
+    AudioEngine.speak(greeting, this.ttsOpts());
     this.saveChatHistory();
   },
+
+  // ---- kid mode ----
+  isKid() { return (EP.user?.level || 1) <= 2; },
+  ttsOpts() { return this.isKid() ? { speed: 0.85, voice: 'nova' } : {}; },
 
   async send(text, audioCtx) {
     if (!text.trim()) return;
@@ -2410,8 +2702,12 @@ Rules:
       this.hideTyping();
       this.renderMsg('friend', reply);
       this.messages.push({ role: 'assistant', content: reply });
-      // Play audio immediately (using the user tap context)
-      AudioEngine.speak(reply);
+      if (VoiceLoop.active) {
+        VoiceLoop.setState('speaking');
+        await AudioEngine.speak(reply, this.ttsOpts());
+      } else {
+        AudioEngine.speak(reply, this.ttsOpts());
+      }
       await this.learnFacts(text, reply);
       this.saveChatHistory();
     } catch(e) {
@@ -2429,7 +2725,7 @@ Rules:
       <div class="cm-avatar ${isFriend ? 'cma-friend' : 'cma-user'}">${isFriend ? '😊' : (EP.user?.avatar || '🙋')}</div>
       <div class="cm-body">
         <div class="cm-bubble cm-friend-bubble">${escHtml(text)}</div>
-        ${isFriend ? `<button class="cm-audio" onclick="AudioEngine.speak('${escJs(text)}')">🔊</button>` : ''}
+        ${isFriend ? `<button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(text)}', FreeChatModule.ttsOpts())">🔊</button>` : ''}
       </div>`;
     c.appendChild(div);
     c.scrollTop = c.scrollHeight;
@@ -2474,6 +2770,8 @@ Rules:
   },
 
   async toggleMic() {
+    AudioEngine.unlock();
+    if (VoiceLoop.active) VoiceLoop.stop();
     const btn = document.getElementById('freeMicBtn');
     if (STT.isRecording) {
       btn.classList.remove('recording');
@@ -2483,6 +2781,35 @@ Rules:
       const ok = await STT.start();
       if (ok) btn.classList.add('recording');
     }
+  },
+
+  // ---- hands-free voice conversation ----
+  async toggleVoice() {
+    AudioEngine.unlock();
+    if (VoiceLoop.active) { VoiceLoop.stop(); this.renderVoiceState('idle'); return; }
+    const ok = await VoiceLoop.start({
+      silenceMs: this.isKid() ? 2000 : 1300,
+      onState: s => this.renderVoiceState(s),
+      onUtterance: async text => { await this.send(text); },
+    });
+    if (!ok) this.renderVoiceState('idle');
+  },
+
+  renderVoiceState(s) {
+    const orb = document.getElementById('freeOrb');
+    const st = document.getElementById('freeVoiceStatus');
+    if (!orb || !st) return;
+    orb.classList.remove('listening','processing','speaking');
+    if (s === 'listening') { orb.textContent = '🎧'; orb.classList.add('listening'); st.textContent = '聞いています…なんでも話してね（話し終わると自動で送信）'; }
+    else if (s === 'processing') { orb.textContent = '⏳'; orb.classList.add('processing'); st.textContent = '考えています…'; }
+    else if (s === 'speaking') { orb.textContent = '🔊'; orb.classList.add('speaking'); st.textContent = 'フレンドが話しています…'; }
+    else { orb.textContent = '🎙️'; st.textContent = '🎙️をタップして音声会話をはじめる'; }
+  },
+
+  leave() {
+    VoiceLoop.stop();
+    AudioEngine.stop();
+    Router.back();
   },
 
   sendText() {
@@ -2771,8 +3098,7 @@ const LessonSelectModule = {
   start(levelId) {
     if (EP.user) EP.user.level = levelId;
     EP.saveUser();
-    // Set history so back from conv goes to lesson-select then home
-    Router.history = ['home'];
+    AudioEngine.unlock(); // user tap: unlock audio so the greeting can auto-play
     Router.go('conv', { onEnter: () => ConvModule.startWithLevel(levelId) });
   },
 };
@@ -2783,13 +3109,12 @@ ConvModule.startWithLevel = function(levelId) {
   this.start();
 };
 
-// Patch ConvModule.confirmBack - clear history to prevent loop
+// Patch ConvModule.confirmBack - stop session cleanly and go back
 ConvModule.confirmBack = function() {
   clearInterval(this.timerInterval);
+  VoiceLoop.stop();
   AudioEngine.stop();
-  // Clear router history to prevent back-loop
-  Router.history = [];
-  Router.go('lesson-select', { onEnter: () => LessonSelectModule.render() });
+  Router.back();
 };
 
 // Patch AccountModule.create to go home

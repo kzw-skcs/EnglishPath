@@ -645,6 +645,13 @@ body {
 .voice-status{flex:1;font-size:12px;line-height:1.5;color:var(--text-sec,#667085)}
 .hint-btn{border:none;border-radius:14px;padding:8px 12px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;cursor:pointer;white-space:nowrap}
 .cm-hint{background:#fef9c3 !important;color:#713f12 !important;border:1px dashed #eab308}
+
+/* ===== Kid scene panel & hint illustration ===== */
+.scene-panel{display:flex;align-items:center;justify-content:center;gap:6px;font-size:44px;line-height:1;padding:14px 10px;background:linear-gradient(135deg,#ecfeff,#fef9c3);border-bottom:1px solid rgba(0,0,0,.05);letter-spacing:6px;min-height:76px}
+.scene-panel.pop{animation:scenePop .45s ease}
+@keyframes scenePop{0%{transform:scale(.6);opacity:.2}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+.hint-img{display:block;margin-top:8px;max-width:230px;width:100%;border-radius:12px;border:1px solid rgba(0,0,0,.06)}
+.hint-img-loading{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:#92400e}
 </style>
 </head>
 <body>
@@ -777,6 +784,7 @@ body {
     </div>
     <div class="conv-timer" id="convTimer">05:00</div>
   </div>
+  <div class="scene-panel hidden" id="convScenePanel">👋😊</div>
   <div class="chat-area" id="chatMsgs"></div>
   <div class="session-end-bar hidden" id="convSessionEndBar">
     <p>⏱️ セッション終了！</p>
@@ -873,10 +881,12 @@ body {
     <div class="fc-friend-info"><div class="fc-friend-name">😊 英語フレンド</div><div class="fc-friend-sub">あなたのことを覚えています 🧠</div></div>
     <button class="fc-memory-btn" onclick="showFriendMemory()">記憶 💭</button>
   </div>
+  <div class="scene-panel hidden" id="freeScenePanel">👋😊</div>
   <div class="chat-area" id="freeChatMsgs"></div>
   <div class="voice-bar" id="freeVoiceBar">
     <button class="voice-orb" id="freeOrb" onclick="FreeChatModule.toggleVoice()">🎙️</button>
     <div class="voice-status" id="freeVoiceStatus">🎙️をタップして音声会話をはじめる</div>
+    <button class="hint-btn hidden" id="freeHintBtn" onclick="FreeChatModule.showHint()">🇯🇵 ヒント</button>
   </div>
   <div class="conv-input-bar">
     <input type="text" class="conv-text-inp" id="freeChatInp" placeholder="何でも話しかけてみて！" onkeydown="if(event.key==='Enter')FreeChatModule.sendText()">
@@ -1687,6 +1697,79 @@ const STT = {
 };
 
 // ============================================================
+//  KID VISUALS — scene tags, scene panel, hint illustration
+// ============================================================
+
+// Pull a trailing [scene: 🐱🎈] tag out of an AI reply
+function extractScene(text) {
+  let scene = null;
+  const clean = (text || '').replace(/\[scene:\s*([^\]]*)\]/gi, (m, p1) => {
+    const s = p1.trim();
+    if (s) scene = s;
+    return '';
+  }).trim();
+  return { text: clean, scene };
+}
+
+function updateScenePanel(id, emojis) {
+  const el = document.getElementById(id);
+  if (!el || !emojis) return;
+  el.textContent = emojis;
+  el.classList.remove('pop');
+  void el.offsetWidth; // restart animation
+  el.classList.add('pop');
+}
+
+// DALL-E illustration for the hint button (returns data URI)
+async function genKidImage(prompt) {
+  const key = EP.config.openaiKey;
+  if (!key) return null;
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'dall-e-3',
+      prompt: ('Simple, cute, colorful children\'s picture book illustration, flat style, friendly, no text: ' + prompt).substring(0, 900),
+      n: 1, size: '1024x1024', quality: 'standard', response_format: 'b64_json'
+    })
+  });
+  if (!res.ok) throw new Error('image generation failed');
+  const data = await res.json();
+  const b64 = data.data && data.data[0] && data.data[0].b64_json;
+  return b64 ? ('data:image/png;base64,' + b64) : (data.data && data.data[0] && data.data[0].url) || null;
+}
+
+// Shared hint flow (ConvModule / FreeChatModule)
+async function runKidHint(lastAssistantText, containerId, addHintFn) {
+  showOverlay('ヒントを考えています...');
+  let hint = null, imgPrompt = null;
+  try {
+    const raw = await callClaude(
+      'あなたは子ども向け英会話のアシスタントです。英語の話し相手の発言に対して、(1)子どもがどう答えればよいかを日本語でやさしく2文以内・ひらがな多めで説明し、答え方の英語の例文を1つ含めてください。(2)その話題を表す子ども向けイラストの英語プロンプトも作ってください。必ず次のJSONのみを返す: {"hint":"...","image_prompt":"..."}',
+      [{ role: 'user', content: lastAssistantText }], 300);
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    hint = parsed.hint; imgPrompt = parsed.image_prompt;
+  } catch(e) {}
+  hideOverlay();
+  if (!hint) { showToast('ヒントを取得できませんでした'); return; }
+  const imgId = 'hintImg' + Date.now();
+  addHintFn(hint, imgId);
+  if (!imgPrompt) return;
+  try {
+    const url = await genKidImage(imgPrompt);
+    const slot = document.getElementById(imgId);
+    if (slot && url) {
+      slot.outerHTML = `<img class="hint-img" src="${url}" alt="hint illustration">`;
+      const c = document.getElementById(containerId);
+      if (c) c.scrollTop = c.scrollHeight;
+    } else if (slot) { slot.remove(); }
+  } catch(e) {
+    const slot = document.getElementById(imgId);
+    if (slot) { slot.textContent = 'イラストを作れませんでした'; setTimeout(() => slot.remove(), 3000); }
+  }
+}
+
+// ============================================================
 //  VOICE LOOP — hands-free conversation engine
 //  listen (VAD auto-stop) -> Whisper -> module callback -> TTS -> listen...
 // ============================================================
@@ -2026,6 +2109,8 @@ const ConvModule = {
     const hintBtn = document.getElementById('convHintBtn');
     if (hintBtn) hintBtn.classList.toggle('hidden', !this.isKid());
     document.getElementById('convVoiceBar')?.classList.remove('hidden');
+    const scenePanel = document.getElementById('convScenePanel');
+    if (scenePanel) { scenePanel.classList.toggle('hidden', !this.isKid()); scenePanel.textContent = '👋😊'; }
 
     const greeting = this.getGreeting(lv);
     this.addMsg('teacher', greeting);
@@ -2082,7 +2167,8 @@ Instructions: ${lv.desc}
 - Never break character${this.isKid() ? `
 - The student is a YOUNG CHILD. Be extremely cheerful and encouraging. Praise every attempt ("Great job!", "Wonderful!").
 - Use ONLY very simple words. Very short sentences (max 8 words each, max 2 sentences).
-- If the child is silent, confused, or answers in Japanese, respond warmly and give one easy English phrase to repeat, like: Say "I like cats!"` : ''}`;
+- If the child is silent, confused, or answers in Japanese, respond warmly and give one easy English phrase to repeat, like: Say "I like cats!"
+- At the very END of every reply, add a scene tag with 2-5 emoji that picture what you are talking about, e.g. [scene: 🐱🎈🌞]. Only emoji inside the tag.` : ''}`;
   },
 
   async send(text) {
@@ -2091,10 +2177,12 @@ Instructions: ${lv.desc}
     this.messages.push({ role: 'user', content: text });
     this.showTyping();
     try {
-      const reply = await callClaude(this.buildSystem(), this.messages.slice(-12), 300);
+      const raw = await callClaude(this.buildSystem(), this.messages.slice(-12), 300);
+      const { text: reply, scene } = extractScene(raw);
+      if (scene && this.isKid()) updateScenePanel('convScenePanel', scene);
       this.hideTyping();
       this.addMsg('teacher', reply);
-      this.messages.push({ role: 'assistant', content: reply });
+      this.messages.push({ role: 'assistant', content: raw });
       if (VoiceLoop.active) {
         VoiceLoop.setState('speaking');
         await AudioEngine.speak(reply, this.ttsOpts());
@@ -2137,21 +2225,15 @@ Instructions: ${lv.desc}
     if (VoiceLoop.active) VoiceLoop.stop();
     const lastT = [...this.messages].reverse().find(m => m.role === 'assistant');
     if (!lastT) return;
-    showOverlay('ヒントを考えています...');
-    try {
-      const hint = await callClaude(
-        'あなたは子ども向け英会話のアシスタントです。英語の先生の発言に対して、子どもがどう答えればよいかを日本語でやさしく説明し、答え方の英語の例文を1つ示してください。形式:「先生は「〜」と聞いているよ。たとえば "..." と言ってみよう！」。2文以内、ひらがな多めで。',
-        [{ role: 'user', content: lastT.content }], 200);
-      hideOverlay();
-      this.addHintMsg(hint);
-    } catch(e) { hideOverlay(); showToast('ヒントを取得できませんでした'); }
+    await runKidHint(extractScene(lastT.content).text, 'chatMsgs', (hint, imgId) => this.addHintMsg(hint, imgId));
   },
 
-  addHintMsg(text) {
+  addHintMsg(text, imgId) {
     const c = document.getElementById('chatMsgs');
     const div = document.createElement('div');
     div.className = 'chat-msg cm-teacher';
-    div.innerHTML = `<div class="cm-avatar cma-teacher">🇯🇵</div><div class="cm-body"><div class="cm-bubble cm-hint">${escHtml(text)}</div></div>`;
+    const imgSlot = imgId ? `<div class="hint-img-loading" id="${imgId}"><div class="spinner" style="width:14px;height:14px"></div>イラストを描いています…</div>` : '';
+    div.innerHTML = `<div class="cm-avatar cma-teacher">🇯🇵</div><div class="cm-body"><div class="cm-bubble cm-hint">${escHtml(text)}${imgSlot}</div></div>`;
     c.appendChild(div);
     c.scrollTop = c.scrollHeight;
   },
@@ -2231,7 +2313,7 @@ const ReviewModule = {
     transcriptEl.innerHTML = '<h3 class="section-title">📝 文字起こし＆添削</h3><div class="spinner" style="margin:20px auto;width:32px;height:32px;"></div>';
 
     try {
-      const conv = messages.map(m => `${m.role === 'user' ? 'Student' : 'Teacher'}: ${m.content}`).join('\n');
+      const conv = messages.map(m => `${m.role === 'user' ? 'Student' : 'Teacher'}: ${extractScene(m.content).text}`).join('\n');
       const prompt = `Analyze this English conversation and return a JSON array (no markdown, raw JSON only):
 [{
   "speaker": "Student" or "Teacher",
@@ -2632,6 +2714,10 @@ const FreeChatModule = {
   init() {
     AudioEngine.unlock(); // called from a user tap on the home card
     this.renderVoiceState('idle');
+    const scenePanel = document.getElementById('freeScenePanel');
+    if (scenePanel) { scenePanel.classList.toggle('hidden', !this.isKid()); scenePanel.textContent = '👋😊'; }
+    const hintBtn = document.getElementById('freeHintBtn');
+    if (hintBtn) hintBtn.classList.toggle('hidden', !this.isKid());
     this.messages = [];
     const user = EP.user;
     if (!user) return;
@@ -2642,7 +2728,7 @@ const FreeChatModule = {
     }
 
     document.getElementById('freeChatMsgs').innerHTML = '';
-    this.messages.forEach(m => this.renderMsg(m.role === 'user' ? 'user' : 'friend', m.content, false));
+    this.messages.forEach(m => this.renderMsg(m.role === 'user' ? 'user' : 'friend', extractScene(m.content).text, false));
 
     if (!this.messages.length) {
       this.sendGreeting();
@@ -2670,7 +2756,8 @@ Rules:
 - Learn from the conversation and remember facts about them
 - NEVER give formal grammar lessons or act like a tutor in this mode
 - The user may speak via voice recognition; transcripts can contain small errors — interpret them charitably${this.isKid() ? `
-- The user is a YOUNG CHILD. Be a super friendly, playful friend. Very simple words, very short sentences (max 8 words). Praise a lot. If they seem stuck, offer an easy phrase to say.` : ''}`;
+- The user is a YOUNG CHILD. Be a super friendly, playful friend. Very simple words, very short sentences (max 8 words). Praise a lot. If they seem stuck, offer an easy phrase to say.
+- At the very END of every reply, add a scene tag with 2-5 emoji that picture what you are talking about, e.g. [scene: 🐶⚽🌳]. Only emoji inside the tag.` : ''}`;
   },
 
   async sendGreeting() {
@@ -2698,10 +2785,12 @@ Rules:
     this.messages.push({ role: 'user', content: text });
     this.showTyping();
     try {
-      const reply = await callClaude(this.buildSystem(), this.messages.slice(-16), 200);
+      const raw = await callClaude(this.buildSystem(), this.messages.slice(-16), 200);
+      const { text: reply, scene } = extractScene(raw);
+      if (scene && this.isKid()) updateScenePanel('freeScenePanel', scene);
       this.hideTyping();
       this.renderMsg('friend', reply);
-      this.messages.push({ role: 'assistant', content: reply });
+      this.messages.push({ role: 'assistant', content: raw });
       if (VoiceLoop.active) {
         VoiceLoop.setState('speaking');
         await AudioEngine.speak(reply, this.ttsOpts());
@@ -2804,6 +2893,24 @@ Rules:
     else if (s === 'processing') { orb.textContent = '⏳'; orb.classList.add('processing'); st.textContent = '考えています…'; }
     else if (s === 'speaking') { orb.textContent = '🔊'; orb.classList.add('speaking'); st.textContent = 'フレンドが話しています…'; }
     else { orb.textContent = '🎙️'; st.textContent = '🎙️をタップして音声会話をはじめる'; }
+  },
+
+  async showHint() {
+    AudioEngine.unlock();
+    if (VoiceLoop.active) VoiceLoop.stop();
+    const lastF = [...this.messages].reverse().find(m => m.role === 'assistant');
+    if (!lastF) return;
+    await runKidHint(extractScene(lastF.content).text, 'freeChatMsgs', (hint, imgId) => this.addHintMsg(hint, imgId));
+  },
+
+  addHintMsg(text, imgId) {
+    const c = document.getElementById('freeChatMsgs');
+    const div = document.createElement('div');
+    div.className = 'chat-msg cm-teacher';
+    const imgSlot = imgId ? `<div class="hint-img-loading" id="${imgId}"><div class="spinner" style="width:14px;height:14px"></div>イラストを描いています…</div>` : '';
+    div.innerHTML = `<div class="cm-avatar cma-friend">🇯🇵</div><div class="cm-body"><div class="cm-bubble cm-hint">${escHtml(text)}${imgSlot}</div></div>`;
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
   },
 
   leave() {

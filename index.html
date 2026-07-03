@@ -1005,6 +1005,14 @@ function renderTestHistory(){const hist=EP.user?.testHistory?.slice(0,5)||[];con
 function showFriendMemory(){const facts=EP.user?.chatFacts||[];const el=document.getElementById('memoryList');el.innerHTML=facts.length?facts.map(f=>`<div class="flex-row gap-8" style="padding:8px;background:var(--bg-elevated);border-radius:8px"><span>💭</span><span class="text-sm">${escHtml(f)}</span></div>`).join(''):'<p class="text-sm text-sec text-center">まだ記憶がありません。<br>もっと会話しましょう！</p>';document.getElementById('memoryBackdrop').classList.add('open');document.getElementById('memorySheet').classList.add('open');}
 function closeMemorySheet(){document.getElementById('memoryBackdrop').classList.remove('open');document.getElementById('memorySheet').classList.remove('open');}
 
+// Surface unexpected errors as a toast so problems can be reported precisely
+window.addEventListener('error', e => {
+  try { showToast('⚠️ エラー: ' + (e.message || 'unknown')); } catch(_) {}
+});
+window.addEventListener('unhandledrejection', e => {
+  try { showToast('⚠️ エラー: ' + ((e.reason && e.reason.message) || e.reason || 'unknown')); } catch(_) {}
+});
+
 document.addEventListener('DOMContentLoaded',()=>{
   // まずすべての画面をJSで非表示にする（CSS問題を完全に回避）
   Router.init();
@@ -1552,6 +1560,27 @@ const EP = {
 };
 
 // ============================================================
+//  SHARED AUDIO CONTEXT
+//  iOS Safari limits the number of AudioContexts per page (~4).
+//  Creating one per voice session eventually kills the VAD silently,
+//  so the whole app shares a single never-closed context.
+// ============================================================
+const SharedAudio = {
+  _ctx: null,
+  ctx() {
+    if (!this._ctx) {
+      try { this._ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return null; }
+    }
+    return this._ctx;
+  },
+  resume() {
+    const c = this.ctx();
+    if (c && c.state !== 'running') { try { c.resume(); } catch(e) {} }
+    return c;
+  },
+};
+
+// ============================================================
 //  AUDIO ENGINE  (OpenAI TTS + Web Speech fallback)
 // ============================================================
 
@@ -1634,13 +1663,14 @@ const AudioEngine = {
       // short silent WAV (data URI) — playing this "blesses" the element
       el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=';
       el.play().catch(()=>{});
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const buf = ctx.createBuffer(1, 1, 22050);
-      const srcNode = ctx.createBufferSource();
-      srcNode.buffer = buf;
-      srcNode.connect(ctx.destination);
-      srcNode.start(0);
-      ctx.resume();
+      const ctx = SharedAudio.resume();
+      if (ctx) {
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const srcNode = ctx.createBufferSource();
+        srcNode.buffer = buf;
+        srcNode.connect(ctx.destination);
+        srcNode.start(0);
+      }
       this._unlocked = true;
     } catch(e) {}
   },
@@ -1693,8 +1723,23 @@ const STT = {
         const text = await this.transcribe(blob);
         resolve(text);
       };
-      this.mediaRecorder.stop();
+      try { this.mediaRecorder.stop(); }
+      catch(e) { this.isRecording = false; resolve(null); }
     });
+  },
+
+  // Abort recording without transcribing (used when leaving a screen)
+  cancel() {
+    if (!this.mediaRecorder || !this.isRecording) return;
+    try {
+      this.mediaRecorder.onstop = null;
+      this.mediaRecorder.stop();
+    } catch(e) {}
+    try { this.mediaRecorder.stream?.getTracks().forEach(t => t.stop()); } catch(e) {}
+    this.isRecording = false;
+    document.getElementById('recBar')?.classList.remove('on');
+    document.getElementById('micBtn')?.classList.remove('recording');
+    document.getElementById('freeMicBtn')?.classList.remove('recording');
   },
 
   async transcribe(blob, quiet = false) {
@@ -1813,22 +1858,26 @@ const VoiceLoop = {
     if (this.active) return true;
     this.handler = handler;
     AudioEngine.unlock();
-    // Create AudioContext synchronously while still inside the user tap (iOS requirement)
-    try {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      this.ctx.resume();
-    } catch(e) { this.ctx = null; }
+    // Shared AudioContext: resume synchronously while still inside the user tap (iOS requirement)
+    this.ctx = SharedAudio.resume();
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true }
       });
     } catch(e) {
-      showToast('マイクへのアクセスが許可されていません');
-      if (this.ctx) { try { this.ctx.close(); } catch(err){} this.ctx = null; }
+      showToast('マイクを使えませんでした（' + (e.name || e.message) + '）。設定でマイク許可をご確認ください');
       return false;
     }
+    // If iOS kills the mic (screen lock / app switch), stop the loop cleanly
     try {
-      if (this.ctx.state === 'suspended') await this.ctx.resume();
+      this.stream.getTracks().forEach(t => {
+        t.addEventListener('ended', () => {
+          if (this.active) { showToast('マイクが中断されたため停止しました。🎙️で再開できます'); this.stop(); }
+        });
+      });
+    } catch(e) {}
+    try {
+      if (this.ctx && this.ctx.state !== 'running') await this.ctx.resume();
       this.srcNode = this.ctx.createMediaStreamSource(this.stream);
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 2048;
@@ -1851,7 +1900,9 @@ const VoiceLoop = {
     } catch(e) {}
     this.recorder = null;
     if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
-    if (this.ctx) { try { this.ctx.close(); } catch(e){} this.ctx = null; }
+    // shared AudioContext is NEVER closed — just detach the mic from it
+    if (this.srcNode) { try { this.srcNode.disconnect(); } catch(e){} this.srcNode = null; }
+    this.ctx = null;
     this.analyser = null;
     this.setState('idle');
     this.handler = null;
@@ -1894,11 +1945,16 @@ const VoiceLoop = {
     let spoke = false, lastVoice = Date.now();
     const started = Date.now();
     clearInterval(this.monitorTimer);
+    const noVadStarted = Date.now();
     this.monitorTimer = setInterval(() => {
       if (!this.active || !this.recorder || this.recorder.state === 'inactive') {
         clearInterval(this.monitorTimer); return;
       }
-      if (!this.analyser) return; // no VAD support -> manual stop only
+      if (!this.analyser) {
+        // VAD unavailable -> record in fixed 7s turns so the loop still works
+        if (Date.now() - noVadStarted > 7000) this.finishUtterance();
+        return;
+      }
       const level = this.rms();
       if (level > SPEECH_T) { spoke = true; lastVoice = Date.now(); }
       else if (spoke && level > SILENCE_T) { lastVoice = Date.now(); }
@@ -2069,9 +2125,10 @@ const Router = {
     const next = document.getElementById('screen-' + id);
     if (!next) { console.warn('Screen not found: screen-' + id); return; }
 
-    // Leaving a screen always stops any ongoing voice loop / audio
-    if (typeof VoiceLoop !== 'undefined') VoiceLoop.stop();
-    if (typeof AudioEngine !== 'undefined') AudioEngine.stop();
+    // Leaving a screen always stops any ongoing voice loop / mic / audio
+    if (typeof VoiceLoop !== 'undefined') { try { VoiceLoop.stop(); } catch(e) {} }
+    if (typeof STT !== 'undefined') { try { STT.cancel(); } catch(e) {} }
+    if (typeof AudioEngine !== 'undefined') { try { AudioEngine.stop(); } catch(e) {} }
 
     // Hide ALL screens using inline style (bypasses all CSS issues)
     document.querySelectorAll('.screen').forEach(s => {
@@ -2796,16 +2853,23 @@ const FreeChatModule = {
     const user = EP.user;
     if (!user) return;
 
-    // Restore recent history
+    // Restore recent history (drop broken empty entries from older versions)
     if (user.chatHistory?.length) {
-      this.messages = [...user.chatHistory.slice(-10)];
+      this.messages = user.chatHistory.slice(-10).filter(m => m && m.content && extractScene(m.content).text);
     }
 
     document.getElementById('freeChatMsgs').innerHTML = '';
     this.messages.forEach(m => this.renderMsg(m.role === 'user' ? 'user' : 'friend', extractScene(m.content).text, false));
 
+    // Always greet with voice on entry — also when history was restored
     if (!this.messages.length) {
       this.sendGreeting();
+    } else {
+      const wb = `Welcome back, ${user.name}! 😊 What do you want to talk about?`;
+      this.renderMsg('friend', wb);
+      this.messages.push({ role: 'assistant', content: wb });
+      AudioEngine.speak(wb, this.ttsOpts());
+      this.saveChatHistory();
     }
   },
 

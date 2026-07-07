@@ -949,6 +949,18 @@ body {
       </div>
     </div>
     <div>
+      <div class="section-title">🎙️ AIが待ってくれる時間</div>
+      <div class="card card-pad flex-col gap-10">
+        <p class="text-sm text-sec" style="line-height:1.7">話の途中で言葉を考えていると送信されてしまう場合は長めに。テンポを上げたい場合は短めにしてください。</p>
+        <div class="accent-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <button class="accent-btn" id="settingsPause1500" onclick="selectPauseSettings(1500)"><span class="ab-flag">⚡</span><span class="ab-name">せっかち<br>1.5秒</span></button>
+          <button class="accent-btn" id="settingsPause2500" onclick="selectPauseSettings(2500)"><span class="ab-flag">🙂</span><span class="ab-name">ふつう<br>2.5秒</span></button>
+          <button class="accent-btn" id="settingsPause4000" onclick="selectPauseSettings(4000)"><span class="ab-flag">🤔</span><span class="ab-name">じっくり<br>4秒</span></button>
+        </div>
+        <p class="text-xs text-muted" style="line-height:1.6">※ 子どもレベル（幼児期・小学校低学年）ではさらに+1秒待ちます</p>
+      </div>
+    </div>
+    <div>
       <div class="section-title">APIキー</div>
       <div class="card card-pad flex-col gap-12">
         <div>
@@ -1003,9 +1015,10 @@ body {
 
 <script>
 function selectAccent(a){EP.config.accent=a;document.getElementById('accentUS').classList.toggle('selected',a==='US');document.getElementById('accentUK').classList.toggle('selected',a==='UK');}
+function selectPauseSettings(ms){EP.config.pauseMs=ms;EP.saveConfig();[1500,2500,4000].forEach(v=>document.getElementById('settingsPause'+v)?.classList.toggle('selected',v===ms));showToast('待ち時間を'+(ms/1000)+'秒にしました');}
 function selectAccentSettings(a){EP.config.accent=a;EP.saveConfig();document.getElementById('settingsAccentUS').classList.toggle('selected',a==='US');document.getElementById('settingsAccentUK').classList.toggle('selected',a==='UK');showToast('アクセントを変更しました');}
 function saveSettings(){const ck=document.getElementById('settingsClaudeKey').value.trim();const ok=document.getElementById('settingsOpenaiKey').value.trim();if(!ck||!ok){showToast('両方のAPIキーを入力してください');return;}EP.config.claudeKey=ck;EP.config.openaiKey=ok;EP.saveConfig();showToast('✅ 設定を保存しました');}
-function initSettings(){const u=EP.config;document.getElementById('settingsClaudeKey').value=u.claudeKey||'';document.getElementById('settingsOpenaiKey').value=u.openaiKey||'';document.getElementById('settingsAccentUS').classList.toggle('selected',u.accent==='US');document.getElementById('settingsAccentUK').classList.toggle('selected',u.accent==='UK');const el=document.getElementById('settingsAccountList');const users=EP.users||[];if(!users.length){el.innerHTML='<p class="text-sm text-muted text-center">アカウントなし</p>';return;}el.innerHTML=users.map(u=>`<div class="acc-card ${EP.user?.id===u.id?'acc-active':''}" onclick="EP.switchUser('${u.id}');HomeModule.refresh();Router.go('home',{onEnter:()=>HomeModule.refresh()});showToast('${escHtml(u.name)}に切り替えました')"><div class="acc-avatar">${u.avatar}</div><div class="acc-info"><div class="acc-name semibold">${escHtml(u.name)}</div><div class="text-xs text-sec">TOEIC ${u.toeicScore||'未測定'}</div></div>${EP.user?.id===u.id?'<span class="chip chip-teal" style="font-size:9px">選択中</span>':''}</div>`).join('');}
+function initSettings(){const u=EP.config;document.getElementById('settingsClaudeKey').value=u.claudeKey||'';document.getElementById('settingsOpenaiKey').value=u.openaiKey||'';const pm=u.pauseMs||2500;[1500,2500,4000].forEach(v=>document.getElementById('settingsPause'+v)?.classList.toggle('selected',v===pm));document.getElementById('settingsAccentUS').classList.toggle('selected',u.accent==='US');document.getElementById('settingsAccentUK').classList.toggle('selected',u.accent==='UK');const el=document.getElementById('settingsAccountList');const users=EP.users||[];if(!users.length){el.innerHTML='<p class="text-sm text-muted text-center">アカウントなし</p>';return;}el.innerHTML=users.map(u=>`<div class="acc-card ${EP.user?.id===u.id?'acc-active':''}" onclick="EP.switchUser('${u.id}');HomeModule.refresh();Router.go('home',{onEnter:()=>HomeModule.refresh()});showToast('${escHtml(u.name)}に切り替えました')"><div class="acc-avatar">${u.avatar}</div><div class="acc-info"><div class="acc-name semibold">${escHtml(u.name)}</div><div class="text-xs text-sec">TOEIC ${u.toeicScore||'未測定'}</div></div>${EP.user?.id===u.id?'<span class="chip chip-teal" style="font-size:9px">選択中</span>':''}</div>`).join('');}
 function setupDone(){const ck=document.getElementById('claudeKey').value.trim();const ok=document.getElementById('openaiKey').value.trim();if(!ck||!ok){showToast('両方のAPIキーを入力してください');return;}EP.config.claudeKey=ck;EP.config.openaiKey=ok;EP.saveConfig();if(!EP.users?.length){Router.go('accounts',{onEnter:()=>AccountModule.renderList()});setTimeout(()=>AccountModule.openCreate(),400);}else{if(!EP.currentUser)EP.currentUser=EP.users[0];EP.updateStreak();Router.go('home',{onEnter:()=>HomeModule.refresh()});}}
 function renderTestHistory(){const hist=EP.user?.testHistory?.slice(0,5)||[];const el=document.getElementById('testHistoryList');if(!el)return;const labels={screening:'スクリーニング',detailed:'詳細分析',mock:'模擬試験'};if(!hist.length){el.innerHTML='<p class="text-sm text-muted text-center">テスト履歴なし</p>';return;}el.innerHTML=hist.map(t=>`<div class="hist-item"><span class="chip ${t.type==='mock'?'chip-gold':t.type==='detailed'?'chip-blue':'chip-teal'}" style="font-size:10px">${labels[t.type]||t.type}</span><span class="font-mono text-gold bold">${t.toeic}</span><span class="text-xs text-muted">${t.correct}/${t.total}問</span><span class="text-xs text-muted" style="margin-left:auto">${new Date(t.date).toLocaleDateString('ja-JP',{month:'short',day:'numeric'})}</span></div>`).join('');}
 function showFriendMemory(){const facts=EP.user?.chatFacts||[];const el=document.getElementById('memoryList');el.innerHTML=facts.length?facts.map(f=>`<div class="flex-row gap-8" style="padding:8px;background:var(--bg-elevated);border-radius:8px"><span>💭</span><span class="text-sm">${escHtml(f)}</span></div>`).join(''):'<p class="text-sm text-sec text-center">まだ記憶がありません。<br>もっと会話しましょう！</p>';document.getElementById('memoryBackdrop').classList.add('open');document.getElementById('memorySheet').classList.add('open');}
@@ -1984,13 +1997,19 @@ const VoiceLoop = {
     this.setState('processing');
     const blob = new Blob(this.chunks, { type: mimeType || 'audio/mp4' });
     this.chunks = [];
-    if (blob.size < 2000) { this.listen(); return; } // too short — listen again
+    if (blob.size < 2000) {
+      showToast('🎤 声が短すぎて聞き取れませんでした。もう一度どうぞ');
+      this.listen(); return;
+    }
     const text = await STT.transcribe(blob, true);
     if (!this.active) return;
     const clean = (text || '').trim();
     // Whisper sometimes hallucinates on silence — ignore junk
     const junk = /^(thank you\.?|thanks for watching.*|you|\.+)$/i;
-    if (!clean || clean.length < 2 || junk.test(clean)) { this.listen(); return; }
+    if (!clean || clean.length < 2 || junk.test(clean)) {
+      showToast('🎤 うまく聞き取れませんでした。少し大きな声でもう一度どうぞ');
+      this.listen(); return;
+    }
     if (this.handler && this.handler.onUtterance) {
       try { await this.handler.onUtterance(clean); } catch(e) { console.warn(e); }
     }
@@ -2338,7 +2357,7 @@ Instructions: ${lv.desc}
     if (VoiceLoop.active) { VoiceLoop.stop(); this.renderVoiceState('idle'); return; }
     if (this.ended) { showToast('セッションは終了しています'); return; }
     const ok = await VoiceLoop.start({
-      silenceMs: this.isKid() ? 2000 : 1300,
+      silenceMs: (EP.config.pauseMs || 2500) + (this.isKid() ? 1000 : 0),
       onState: s => this.renderVoiceState(s),
       onUtterance: async text => { await this.send(text); },
     });
@@ -3021,7 +3040,7 @@ Rules:
     AudioEngine.unlock();
     if (VoiceLoop.active) { VoiceLoop.stop(); this.renderVoiceState('idle'); return; }
     const ok = await VoiceLoop.start({
-      silenceMs: this.isKid() ? 2000 : 1300,
+      silenceMs: (EP.config.pauseMs || 2500) + (this.isKid() ? 1000 : 0),
       onState: s => this.renderVoiceState(s),
       onUtterance: async text => { await this.send(text); },
     });

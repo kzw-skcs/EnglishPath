@@ -634,6 +634,12 @@ body {
 }
 
 
+/* ===== Scroll fix =====
+   .scroll-content は flex-col のため、子要素（.card等、特に overflow:hidden を持つもの）が
+   flex-shrink で押し縮められ「はみ出しゼロ＝スクロール不能」になっていた。
+   子の縮小を禁止して自然な高さを保ち、コンテナ側をスクロールさせる。 */
+.scroll-content > * { flex-shrink: 0; }
+
 /* ===== Voice conversation (hands-free) ===== */
 .voice-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-card,#fff);border-top:1px solid rgba(0,0,0,.06)}
 .voice-orb{width:56px;height:56px;min-width:56px;border-radius:50%;border:none;font-size:24px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#5eead4,#2dd4bf);color:#fff;box-shadow:0 2px 10px rgba(45,212,191,.4);cursor:pointer;transition:transform .15s}

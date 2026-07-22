@@ -658,6 +658,25 @@ body {
 @keyframes scenePop{0%{transform:scale(.6);opacity:.2}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
 .hint-img{display:block;margin-top:8px;max-width:230px;width:100%;border-radius:12px;border:1px solid rgba(0,0,0,.06)}
 .hint-img-loading{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:#92400e}
+
+/* ===== Kid's Duo prep & phrases ===== */
+.prep-month-chips{display:flex;gap:6px;overflow-x:auto;padding:4px 0;-webkit-overflow-scrolling:touch}
+.pm-chip{padding:7px 13px;border-radius:14px;background:var(--bg-elevated);border:1px solid var(--border);font-size:12px;white-space:nowrap;cursor:pointer;flex-shrink:0}
+.pm-chip.selected{background:linear-gradient(135deg,#5eead4,#2dd4bf);color:#04262b;font-weight:700;border-color:transparent}
+.prep-card{display:flex;align-items:center;gap:10px;padding:13px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer}
+.prep-card .pc-week{font-size:10px;font-weight:700;color:#2dd4bf;min-width:44px}
+.prep-card .pc-title{font-weight:700;font-size:14px}
+.prep-card .pc-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+.prep-card .pc-now{margin-left:auto;flex-shrink:0}
+.word-row{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border)}
+.word-row:last-child{border-bottom:none}
+.word-en{font-weight:700;font-size:15px}
+.word-ja{color:var(--text-sec);font-size:12px;margin-left:auto;text-align:right}
+.phrase-quiz-card{background:var(--bg-elevated);border-radius:12px;padding:14px;margin-top:8px}
+.reveal-btn{border:none;border-radius:10px;padding:8px 14px;background:linear-gradient(135deg,#5eead4,#2dd4bf);color:#04262b;font-weight:700;font-size:13px;cursor:pointer}
+.pq-opt{display:block;width:100%;text-align:left;padding:10px 12px;margin-top:6px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-main,#fff);font-size:14px;cursor:pointer}
+.pq-opt.correct{background:rgba(16,185,129,.25);border-color:#10b981}
+.pq-opt.wrong{background:rgba(239,68,68,.25);border-color:#ef4444}
 </style>
 </head>
 <body>
@@ -739,6 +758,14 @@ body {
       </div>
       <div class="home-mod-card hmc-chat" onclick="Router.go('freechat',{onEnter:()=>FreeChatModule.init()})">
         <div class="hmc-left"><div class="hmc-icon">😊</div><div><div class="hmc-name">フリートーク</div><div class="hmc-desc">友達感覚で気軽に英会話。AIがあなたを記憶していく</div></div></div>
+        <span class="hmc-arrow">›</span>
+      </div>
+      <div class="home-mod-card hmc-lesson" onclick="Router.go('prep',{onEnter:()=>PrepModule.render()})">
+        <div class="hmc-left"><div class="hmc-icon">🏫</div><div><div class="hmc-name">教室のよしゅう</div><div class="hmc-desc">Kid's Duo 今週のことば・今月のフレーズを事前準備</div></div></div>
+        <span class="hmc-arrow">›</span>
+      </div>
+      <div class="home-mod-card hmc-phonics" onclick="Router.go('phrases',{onEnter:()=>PhrasesModule.render()})">
+        <div class="hmc-left"><div class="hmc-icon">💯</div><div><div class="hmc-name">きほんの100フレーズ</div><div class="hmc-desc">英会話教室で困らないいちばん大事なフレーズ集</div></div></div>
         <span class="hmc-arrow">›</span>
       </div>
       <div class="home-mod-card hmc-phonics" onclick="Router.go('phonics',{onEnter:()=>PhonicsModule.init()})">
@@ -900,6 +927,66 @@ body {
     <button class="mic-btn" id="freeMicBtn" onclick="FreeChatModule.toggleMic()">🎤</button>
     <button class="send-btn" onclick="FreeChatModule.sendText()">➤</button>
   </div>
+</div>
+
+<div class="screen" id="screen-prep">
+  <div class="s-header">
+    <button class="back-btn" onclick="Router.back()">←</button>
+    <h2>🏫 教室のよしゅう</h2>
+    <button class="hdr-action-btn" onclick="PrepModule.openAdd()">＋追加</button>
+  </div>
+  <div class="scroll-content no-nav inner-pad flex-col gap-12">
+    <div>
+      <div class="section-title">📅 今週のことば（週テーマ）</div>
+      <div class="prep-month-chips" id="prepMonthChips"></div>
+      <div class="flex-col gap-8" id="prepWeeklyList" style="margin-top:8px"></div>
+    </div>
+    <div>
+      <div class="section-title">🗓 今月のフレーズ（月テーマ）</div>
+      <div class="flex-col gap-8" id="prepMonthlyList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-prep-theme">
+  <div class="s-header">
+    <button class="back-btn" onclick="Router.back()">←</button>
+    <h2 id="prepThemeTitle">テーマ</h2>
+  </div>
+  <div class="scroll-content no-nav inner-pad flex-col gap-12" id="prepThemeBody"></div>
+</div>
+
+<div class="screen" id="screen-phrases">
+  <div class="s-header">
+    <button class="back-btn" onclick="Router.back()">←</button>
+    <h2>💯 きほんの100フレーズ</h2>
+  </div>
+  <div class="scroll-content no-nav inner-pad flex-col gap-12">
+    <p class="text-sm text-sec" style="line-height:1.7">英会話教室で困らないための、いちばん大事な100フレーズ。🔊で発音を聞いて、まねして言ってみよう！</p>
+    <div class="prep-month-chips" id="phraseCatChips"></div>
+    <div id="phraseList" class="flex-col gap-8"></div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="prepAddBackdrop" onclick="PrepModule.closeAdd()"></div>
+<div class="sheet" id="prepAddSheet">
+  <div class="sheet-drag"></div>
+  <h3 class="semibold" style="margin-bottom:12px">テーマを追加</h3>
+  <div class="field-label">種別</div>
+  <div class="accent-grid mt-8" style="grid-template-columns:1fr 1fr">
+    <button class="accent-btn selected" id="prepAddTypeW" onclick="PrepModule.setAddType('w')"><span class="ab-name">週テーマ（単語）</span></button>
+    <button class="accent-btn" id="prepAddTypeM" onclick="PrepModule.setAddType('m')"><span class="ab-name">月テーマ（フレーズ）</span></button>
+  </div>
+  <div class="field-label mt-16">月（1〜12）・週（1〜4）</div>
+  <div class="flex-row gap-8 mt-8" style="display:flex">
+    <input type="number" class="input-field" id="prepAddMonth" min="1" max="12" placeholder="月" style="flex:1">
+    <input type="number" class="input-field" id="prepAddWeek" min="1" max="4" placeholder="週" style="flex:1">
+  </div>
+  <div class="field-label mt-16">タイトル（例: Cooking with Grandma / Can you ~?）</div>
+  <input type="text" class="input-field mt-8" id="prepAddTitle" placeholder="タイトル">
+  <div class="field-label mt-16" id="prepAddWordsLabel">ことば（例: apple(りんご), dog(犬), run(走る)）</div>
+  <textarea class="input-field mt-8" id="prepAddWords" rows="3" placeholder="apple(りんご), dog(犬), ..." style="resize:none"></textarea>
+  <button class="btn-primary mt-16" onclick="PrepModule.saveAdd()">保存する</button>
 </div>
 
 <div class="screen" id="screen-planner">
@@ -1788,6 +1875,341 @@ const STT = {
   },
 };
 
+
+
+// ============================================================
+//  PREP MODULE — Kid's Duo 教室のよしゅう
+// ============================================================
+const PrepModule = {
+  selMonth: null,
+  addType: 'w',
+
+  custom() {
+    try { return JSON.parse(localStorage.getItem('ep_kduo_custom')) || { weekly: [], monthly: [] }; }
+    catch(e) { return { weekly: [], monthly: [] }; }
+  },
+  saveCustom(c) { localStorage.setItem('ep_kduo_custom', JSON.stringify(c)); },
+  weekly() { return [...KDUO_WEEKLY, ...this.custom().weekly.map(t => ({...t, custom: true}))]; },
+  monthly() { return [...KDUO_MONTHLY, ...this.custom().monthly.map(t => ({...t, custom: true}))]; },
+
+  render() {
+    if (this.selMonth === null) this.selMonth = new Date().getMonth() + 1;
+    // month chips (3月始まりの教材順)
+    const order = [3,4,5,6,7,8,9,10,11,12,1,2];
+    document.getElementById('prepMonthChips').innerHTML = order.map(m =>
+      `<button class="pm-chip ${m===this.selMonth?'selected':''}" onclick="PrepModule.selMonth=${m};PrepModule.render()">${m}月</button>`).join('');
+    // weekly list for month
+    const now = new Date();
+    const curM = now.getMonth() + 1;
+    const curW = Math.min(4, Math.ceil(now.getDate() / 7));
+    const list = this.weekly().filter(t => t.m === this.selMonth).sort((a,b) => a.w - b.w);
+    document.getElementById('prepWeeklyList').innerHTML = list.length ? list.map(t => `
+      <div class="prep-card" onclick="PrepModule.openTheme('w','${t.m}-${t.w}${t.custom?'-c':''}')">
+        <div class="pc-week">Week ${t.w}</div>
+        <div><div class="pc-title">${escHtml(t.title)}</div><div class="pc-sub">${t.words ? t.words.length + 'このことば' : ''}${t.custom ? ' · 自分で追加' : ''}</div></div>
+        ${t.m === curM && t.w === curW ? '<span class="chip chip-teal pc-now" style="font-size:10px">今週</span>' : '<span class="llc-arrow pc-now">›</span>'}
+      </div>`).join('') : '<p class="text-sm text-muted text-center" style="padding:8px">この月のテーマは未登録です。右上の「＋追加」から登録できます</p>';
+    // monthly list (all months)
+    const ml = this.monthly().sort((a,b) => a.m - b.m);
+    document.getElementById('prepMonthlyList').innerHTML = ml.length ? ml.map(t => `
+      <div class="prep-card" onclick="PrepModule.openTheme('m','${t.m}-${escJs(t.title)}${t.custom?'-c':''}')">
+        <div class="pc-week">${t.m}月</div>
+        <div><div class="pc-title">${escHtml(t.title)}</div><div class="pc-sub">${escHtml(t.desc || '')}${t.custom ? ' · 自分で追加' : ''}</div></div>
+        ${t.m === curM ? '<span class="chip chip-teal pc-now" style="font-size:10px">今月</span>' : '<span class="llc-arrow pc-now">›</span>'}
+      </div>`).join('') : '<p class="text-sm text-muted text-center" style="padding:8px">未登録です。「＋追加」から登録できます</p>';
+  },
+
+  findTheme(kind, key) {
+    if (kind === 'w') {
+      const [m, w] = key.split('-');
+      return this.weekly().find(t => t.m == m && t.w == w && (key.endsWith('-c') ? t.custom : !t.custom));
+    }
+    const m = key.split('-')[0];
+    const title = key.replace(/^\d+-/, '').replace(/-c$/, '');
+    return this.monthly().find(t => t.m == m && t.title === title);
+  },
+
+  // ---------- テーマ詳細 ----------
+  curKind: null, curKey: null,
+  openTheme(kind, key) {
+    this.curKind = kind; this.curKey = key;
+    const t = this.findTheme(kind, key);
+    if (!t) { showToast('テーマが見つかりません'); return; }
+    Router.go('prep-theme', { onEnter: () => this.renderTheme(t, kind) });
+  },
+
+  renderTheme(t, kind) {
+    document.getElementById('prepThemeTitle').textContent = (kind === 'w' ? '📅 ' : '🗓 ') + t.title;
+    const body = document.getElementById('prepThemeBody');
+    const cacheKey = 'ep_prep_' + (kind === 'w' ? `w${t.m}_${t.w}` : `m${t.m}_${t.title}`);
+    let html = '';
+    if (kind === 'w' && t.words?.length) {
+      html += `<div class="card card-pad"><h3 class="section-title">📖 今週のことば</h3>` +
+        t.words.map(([en, ja]) => `<div class="word-row"><button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(en)}',{speed:0.85,voice:'nova'})">🔊</button><span class="word-en">${escHtml(en)}</span><span class="word-ja">${escHtml(ja)}</span></div>`).join('') + '</div>';
+      html += `<button class="btn-primary" onclick="PrepModule.genSentences('${cacheKey}')">📖 れいぶんをつくる（AI）</button>`;
+      html += `<div id="prepSentences"></div>`;
+      html += `<button class="btn-primary" style="background:linear-gradient(135deg,#fbbf24,#f59e0b)" onclick="PrepModule.startWordQuiz()">📝 ことばクイズ</button>`;
+      html += `<div id="prepQuiz"></div>`;
+      html += `<button class="btn-primary" style="background:linear-gradient(135deg,#60a5fa,#3b82f6)" onclick="PrepModule.startThemeConv()">🎤 このテーマで会話練習</button>`;
+    } else {
+      html += `<div class="card card-pad"><h3 class="section-title">🗓 今月のフレーズ</h3><p class="text-sm" style="line-height:1.8"><b style="font-size:18px">${escHtml(t.title)}</b><br><span class="text-sec">${escHtml(t.desc || '')}</span></p></div>`;
+      html += `<button class="btn-primary" onclick="PrepModule.genDrills('${cacheKey}')">📝 れんしゅうもんだいをつくる（AI）</button>`;
+      html += `<div id="prepDrills"></div>`;
+      html += `<button class="btn-primary" style="background:linear-gradient(135deg,#60a5fa,#3b82f6)" onclick="PrepModule.startThemeConv()">🎤 このフレーズで会話練習</button>`;
+    }
+    if (t.custom) html += `<button class="btn-secondary" onclick="PrepModule.deleteCustom()">🗑 このテーマを削除</button>`;
+    body.innerHTML = html;
+    // restore cache
+    const cached = this.getCache(cacheKey);
+    if (cached?.sentences) this.renderSentences(cached.sentences);
+    if (cached?.drills) this.renderDrills(cached.drills);
+  },
+
+  getCache(k) { try { return JSON.parse(localStorage.getItem(k)); } catch(e) { return null; } },
+  setCache(k, v) { try { localStorage.setItem(k, JSON.stringify({ ...(this.getCache(k) || {}), ...v })); } catch(e) {} },
+
+  // ---------- 例文生成（週テーマ） ----------
+  async genSentences(cacheKey) {
+    const t = this.findTheme(this.curKind, this.curKey);
+    if (!t) return;
+    AudioEngine.unlock();
+    showOverlay('れいぶんを作っています...');
+    try {
+      const words = t.words.map(([en, ja]) => `${en}(${ja})`).join(', ');
+      const raw = await callClaude(
+        'You create example sentences for a young Japanese child learning English. Return ONLY a JSON array.',
+        [{ role: 'user', content: `Theme: "${t.title}". Target words: ${words}.\nCreate one very simple example sentence for EACH word (max 8 words per sentence, child-friendly, related to the theme).\nReturn JSON: [{"en":"...","ja":"やさしい日本語訳"}]` }], 1200);
+      const items = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      hideOverlay();
+      this.setCache(cacheKey, { sentences: items });
+      this.renderSentences(items);
+    } catch(e) { hideOverlay(); showToast('れいぶんを作れませんでした'); }
+  },
+  renderSentences(items) {
+    const el = document.getElementById('prepSentences');
+    if (!el) return;
+    el.innerHTML = `<div class="card card-pad"><h3 class="section-title">📖 れいぶん</h3>` +
+      items.map(s => `<div class="word-row"><button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(s.en)}',{speed:0.85,voice:'nova'})">🔊</button><div><div class="word-en" style="font-size:14px">${escHtml(s.en)}</div><div class="text-xs text-sec" style="margin-top:2px">${escHtml(s.ja)}</div></div></div>`).join('') + '</div>';
+  },
+
+  // ---------- ことばクイズ（週テーマ・API不要） ----------
+  startWordQuiz() {
+    const t = this.findTheme(this.curKind, this.curKey);
+    if (!t?.words?.length) return;
+    AudioEngine.unlock();
+    const qs = [...t.words].sort(() => Math.random() - 0.5);
+    const el = document.getElementById('prepQuiz');
+    el.innerHTML = `<div class="card card-pad"><h3 class="section-title">📝 ことばクイズ</h3>` + qs.map(([en, ja], i) => {
+      const opts = [en, ...t.words.filter(w => w[0] !== en).sort(() => Math.random() - 0.5).slice(0, 3).map(w => w[0])].sort(() => Math.random() - 0.5);
+      return `<div class="phrase-quiz-card"><div class="text-sm semibold">Q${i+1}.「${escHtml(ja)}」は英語で？</div>` +
+        opts.map(o => `<button class="pq-opt" onclick="PrepModule.answerQuiz(this,'${escJs(o)}','${escJs(en)}')">${escHtml(o)}</button>`).join('') + '</div>';
+    }).join('') + '</div>';
+    if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth' });
+  },
+  answerQuiz(btn, chosen, correct) {
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.pq-opt').forEach(b => {
+      b.disabled = true;
+      if (b.textContent === correct) b.classList.add('correct');
+    });
+    if (chosen !== correct) btn.classList.add('wrong');
+    else showToast('⭕ せいかい！');
+    AudioEngine.unlock();
+    AudioEngine.speak(correct, { speed: 0.85, voice: 'nova' });
+  },
+
+  // ---------- れんしゅうもんだい（月テーマ・AI生成） ----------
+  async genDrills(cacheKey) {
+    const t = this.findTheme(this.curKind, this.curKey);
+    if (!t) return;
+    AudioEngine.unlock();
+    showOverlay('れんしゅうもんだいを作っています...');
+    try {
+      const raw = await callClaude(
+        'You create speaking drills for a young Japanese child learning English. Return ONLY a JSON array.',
+        [{ role: 'user', content: `This month's phrase pattern: "${t.title}" (${t.desc || ''}).\nCreate 8 practice drills using this pattern. Each drill: a simple question/sentence using the pattern + a natural short answer a child can say.\nMax 7 words each. Child-friendly topics (animals, food, play, family).\nReturn JSON: [{"q":"Can you swim?","qja":"およげる？","a":"Yes, I can!","aja":"うん、できるよ！"}]` }], 1500);
+      const items = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      hideOverlay();
+      this.setCache(cacheKey, { drills: items });
+      this.renderDrills(items);
+    } catch(e) { hideOverlay(); showToast('もんだいを作れませんでした'); }
+  },
+  renderDrills(items) {
+    const el = document.getElementById('prepDrills');
+    if (!el) return;
+    el.innerHTML = `<div class="card card-pad"><h3 class="section-title">📝 れんしゅうもんだい</h3><p class="text-xs text-sec" style="margin-bottom:4px">🔊で聞いて、こたえを言ってみてから「こたえを見る」を押そう</p>` +
+      items.map((d, i) => `<div class="phrase-quiz-card">
+        <div style="display:flex;align-items:center;gap:8px"><button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(d.q)}',{speed:0.85,voice:'nova'})">🔊</button><div><div class="word-en" style="font-size:14px">${escHtml(d.q)}</div><div class="text-xs text-sec">${escHtml(d.qja || '')}</div></div></div>
+        <div id="drillAns${i}" style="margin-top:8px"><button class="reveal-btn" onclick="PrepModule.revealDrill(${i},'${escJs(d.a)}','${escJs(d.aja || '')}')">こたえを見る</button></div>
+      </div>`).join('') + '</div>';
+  },
+  revealDrill(i, a, aja) {
+    const el = document.getElementById('drillAns' + i);
+    if (!el) return;
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(a)}',{speed:0.85,voice:'nova'})">🔊</button><div><div class="word-en" style="font-size:14px;color:#2dd4bf">${escHtml(a)}</div><div class="text-xs text-sec">${escHtml(aja)}</div></div></div>`;
+    AudioEngine.unlock();
+    AudioEngine.speak(a, { speed: 0.85, voice: 'nova' });
+  },
+
+  // ---------- テーマ会話練習 ----------
+  startThemeConv() {
+    const t = this.findTheme(this.curKind, this.curKey);
+    if (!t) return;
+    AudioEngine.unlock();
+    ConvModule.prepTheme = { kind: this.curKind, title: t.title, desc: t.desc || '', words: t.words || [] };
+    Router.go('conv', { onEnter: () => ConvModule.start() });
+  },
+
+  // ---------- 追加フォーム ----------
+  openAdd() {
+    this.setAddType('w');
+    document.getElementById('prepAddMonth').value = new Date().getMonth() + 1;
+    document.getElementById('prepAddWeek').value = '';
+    document.getElementById('prepAddTitle').value = '';
+    document.getElementById('prepAddWords').value = '';
+    document.getElementById('prepAddBackdrop').classList.add('open');
+    document.getElementById('prepAddSheet').classList.add('open');
+  },
+  closeAdd() {
+    document.getElementById('prepAddBackdrop').classList.remove('open');
+    document.getElementById('prepAddSheet').classList.remove('open');
+  },
+  setAddType(k) {
+    this.addType = k;
+    document.getElementById('prepAddTypeW').classList.toggle('selected', k === 'w');
+    document.getElementById('prepAddTypeM').classList.toggle('selected', k === 'm');
+    document.getElementById('prepAddWeek').style.display = k === 'w' ? '' : 'none';
+    document.getElementById('prepAddWordsLabel').textContent = k === 'w' ? 'ことば（例: apple(りんご), dog(犬), run(走る)）' : '説明（例: 「〜できる？」とたずねる言い方）';
+    document.getElementById('prepAddWords').placeholder = k === 'w' ? 'apple(りんご), dog(犬), ...' : 'せつめいを書く（なくてもOK）';
+  },
+  saveAdd() {
+    const m = parseInt(document.getElementById('prepAddMonth').value);
+    const w = parseInt(document.getElementById('prepAddWeek').value);
+    const title = document.getElementById('prepAddTitle').value.trim();
+    const wordsRaw = document.getElementById('prepAddWords').value.trim();
+    if (!m || m < 1 || m > 12 || !title) { showToast('月とタイトルを入力してください'); return; }
+    const c = this.custom();
+    if (this.addType === 'w') {
+      if (!w || w < 1 || w > 5) { showToast('週（1〜4）を入力してください'); return; }
+      const words = [];
+      const re = /([^,、()（）]+)[（(]([^)）]+)[)）]/g;
+      let mt; while ((mt = re.exec(wordsRaw)) !== null) words.push([mt[1].trim(), mt[2].trim()]);
+      c.weekly = c.weekly.filter(t => !(t.m === m && t.w === w));
+      c.weekly.push({ m, w, title, words });
+    } else {
+      c.monthly = c.monthly.filter(t => !(t.m === m && t.title === title));
+      c.monthly.push({ m, title, desc: wordsRaw });
+    }
+    this.saveCustom(c);
+    this.closeAdd();
+    this.selMonth = m;
+    this.render();
+    showToast('✅ テーマを追加しました');
+  },
+  deleteCustom() {
+    const t = this.findTheme(this.curKind, this.curKey);
+    if (!t?.custom) return;
+    const c = this.custom();
+    if (this.curKind === 'w') c.weekly = c.weekly.filter(x => !(x.m === t.m && x.w === t.w && x.title === t.title));
+    else c.monthly = c.monthly.filter(x => !(x.m === t.m && x.title === t.title));
+    this.saveCustom(c);
+    showToast('削除しました');
+    Router.go('prep', { onEnter: () => this.render() });
+  },
+};
+
+// ============================================================
+//  PHRASES MODULE — きほんの100フレーズ
+// ============================================================
+const PhrasesModule = {
+  selCat: 0,
+  render() {
+    document.getElementById('phraseCatChips').innerHTML = PHRASES100.map((c, i) =>
+      `<button class="pm-chip ${i===this.selCat?'selected':''}" onclick="PhrasesModule.selCat=${i};PhrasesModule.render()">${c.emoji} ${c.cat}</button>`).join('');
+    const c = PHRASES100[this.selCat];
+    document.getElementById('phraseList').innerHTML =
+      `<div class="card card-pad"><h3 class="section-title">${c.emoji} ${c.cat}（10フレーズ）</h3>` +
+      c.items.map(([en, ja]) => `<div class="word-row"><button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(en)}',{speed:0.85,voice:'nova'})">🔊</button><div><div class="word-en" style="font-size:14px">${escHtml(en)}</div><div class="text-xs text-sec" style="margin-top:2px">${escHtml(ja)}</div></div></div>`).join('') +
+      `</div><button class="btn-primary" style="background:linear-gradient(135deg,#fbbf24,#f59e0b)" onclick="PhrasesModule.startQuiz()">❓ このカテゴリでクイズ</button><div id="phraseQuiz"></div>`;
+  },
+  startQuiz() {
+    AudioEngine.unlock();
+    const c = PHRASES100[this.selCat];
+    const picks = [...c.items].sort(() => Math.random() - 0.5).slice(0, 5);
+    document.getElementById('phraseQuiz').innerHTML = `<div class="card card-pad" style="margin-top:8px"><h3 class="section-title">❓ 言えるかな？</h3><p class="text-xs text-sec" style="margin-bottom:4px">日本語を見て英語で言ってみよう。言えたら「こたえ」でかくにん！</p>` +
+      picks.map(([en, ja], i) => `<div class="phrase-quiz-card"><div class="text-sm semibold">「${escHtml(ja)}」</div><div id="phq${i}" style="margin-top:8px"><button class="reveal-btn" onclick="PhrasesModule.reveal(${i},'${escJs(en)}')">こたえ</button></div></div>`).join('') + '</div>';
+  },
+  reveal(i, en) {
+    document.getElementById('phq' + i).innerHTML = `<div style="display:flex;align-items:center;gap:8px"><button class="cm-audio" onclick="AudioEngine.unlock();AudioEngine.speak('${escJs(en)}',{speed:0.85,voice:'nova'})">🔊</button><span class="word-en" style="color:#2dd4bf">${escHtml(en)}</span></div>`;
+    AudioEngine.unlock();
+    AudioEngine.speak(en, { speed: 0.85, voice: 'nova' });
+  },
+};
+
+// ============================================================
+//  KID'S DUO PREP DATA — Vocabulary TIME 年間週テーマ（教材より）
+// ============================================================
+const KDUO_WEEKLY = [
+  {m:3,w:1,title:'School Trip',words:[['souvenir','お土産'],['stand','立つ'],['gold','金色'],['shiny','輝く'],['gorgeous','ゴージャスな'],['garden','庭'],['bench','ベンチ'],['completely','完全に']]},
+  {m:3,w:2,title:'Camping',words:[['tent','テント'],['helmet','ヘルメット'],['race','競争'],['night','夜'],['cook','料理する'],['stew','シチュー'],['pot','鍋'],['reach','手が届く']]},
+  {m:3,w:3,title:'Learning Languages',words:[['Spain','スペイン'],['speak','話す'],['English','英語'],['visit','訪問する'],['easy','簡単な'],['label','ラベルを貼る'],['mistake','間違い'],['trilingual','3ヵ国語を話す']]},
+  {m:4,w:1,title:'Quiz',words:[['quiz','クイズ'],['insect','昆虫'],['tiny','とても小さい'],['interested','興味がある'],['lift','持ち上げる'],['body','体'],['weight','重さ'],['strong','強い']]},
+  {m:4,w:2,title:'Librarians',words:[['librarian','司書'],['collection','コレクション'],['audiobook','オーディオブック'],['look for','〜をさがす'],['find','見つける'],['borrow','借りる'],['quiet','静かな'],['relax','リラックスする']]},
+  {m:4,w:3,title:'Breakfast',words:[['full','おなかいっぱい'],['rice','ごはん'],['miso soup','おみそしる'],['egg','目玉焼き'],['sausage','ソーセージ'],['yogurt','ヨーグルト'],['toast','トースト'],['orange juice','オレンジジュース']]},
+  {m:5,w:1,title:'My Hobby',words:[['build','建てる'],['need','必要とする'],['careful','注意深い'],['here','ここに'],['front','正面'],['window','窓'],['towel','タオル'],['behind','〜のうしろに']]},
+  {m:5,w:2,title:'Spring',words:[['spring','春'],['March','3月'],['May','5月'],['afternoon','午後'],['warm','あたたかい'],['evening','夕方'],['April','4月'],['love','大すき']]},
+  {m:5,w:3,title:'The Contest',words:[['photo','写真'],['album','アルバム'],['interesting','おもしろい'],['local','地元の'],['traditional','伝統的な'],['snack','おやつ'],['enjoy','楽しむ'],['difficult','むずかしい']]},
+  {m:6,w:1,title:'Club Activities',words:[['activity','活動'],['club','クラブ'],['brass band','吹奏楽部'],['football','アメフト'],['which','どの'],['foreign','外国の'],['cool','かっこいい'],['everyone','みんな']]},
+  {m:6,w:2,title:'My Baseball Team',words:[['player','選手'],['bag','かばん'],['ball','ボール'],['June','6月'],['July','7月'],['important','大切な'],['coach','コーチ'],['early','早い']]},
+  {m:6,w:3,title:'Starting a Band',words:[['event','イベント'],['guitar','ギター'],['elementary school','小学校'],['end','おわり'],['August','8月'],['listen','聞く'],['song','歌'],['stage','ステージ']]},
+  {m:7,w:1,title:'Last Summer',words:[['parents','両親'],['black','黒'],['white','白'],['candy','キャンディー'],['ship','船'],['diving','ダイビング'],['purple','むらさき'],['brown','茶色']]},
+  {m:7,w:2,title:'Field Trip',words:[['class','クラス'],['field trip','遠足'],['history','歴史'],['museum','博物館'],['breakfast','朝ごはん'],['money','お金'],['buy','買う'],['bus','バス']]},
+  {m:7,w:3,title:'Cooking with Grandma',words:[['heart','ハート形'],['apron','エプロン'],['favorite','お気に入りの'],['soup','スープ'],['bean','豆'],['corn','トウモロコシ'],['become','〜になる'],['dance','おどる']]},
+  {m:7,w:4,title:'A New Student',words:[['met','会った'],['hobby','しゅみ'],['singer','歌手'],['perform','公演する'],['company','会社'],['concert','コンサート'],['city','都市'],['cheer','応援する']]},
+  {m:8,w:1,title:'The Birthday Gift',words:[['Friday','金曜日'],['birthday','たんじょう日'],['card','カード'],['envelope','封筒'],['aunt','おばさん'],['gift','プレゼント'],['from','〜から'],['pink','ピンク']]},
+  {m:8,w:2,title:'Boat Ride',words:[['sea','海'],['study','勉強する'],['cute','かわいい'],['seaweed','海藻'],['boat','ボート'],['afraid','こわがって'],['scientist','科学者'],['ride','乗る']]},
+  {m:8,w:3,title:'A Baked Surprise',words:[['get','手に入れる'],['flour','小麦粉'],['recipe','レシピ'],['in','〜の中に'],['finish','終える'],['out','外に'],['last','さいごの'],['happy','しあわせな']]},
+  {m:9,w:1,title:'AI',words:[['AI','人工知能'],['built','組み立てた'],['connect','つなぐ'],['across','〜をこえて'],['forget','わすれる'],['helpful','役立つ'],['send','送る'],['problem','問題']]},
+  {m:9,w:2,title:'Art Camp',words:[['article','記事'],['camp','キャンプ'],['field','野原'],['start','始まる'],['October','10月'],['break','休けい'],['pottery','陶器'],['painting','絵']]},
+  {m:9,w:3,title:'Autumn',words:[['glad','うれしい'],['September','9月'],['best','さいこうの'],['autumn','秋'],['leaves','葉っぱ'],['a.m.','午前'],['two','2'],['p.m.','午後']]},
+  {m:10,w:1,title:'Yummy Berries',words:[['jar','ジャムのびん'],['berry','ベリー'],['gather','集める'],['open','開ける'],['a lot','たくさん'],['one','ひとつ'],['people','人々'],['give','あげる']]},
+  {m:10,w:2,title:'Picnic',words:[['picnic','ピクニック'],['beside','〜のそばに'],['clock tower','時計台'],['spot','場所'],['potato','ジャガイモ'],['salad','サラダ'],['tea','紅茶'],['mango','マンゴー']]},
+  {m:10,w:3,title:'Halloween Party',words:[['tomorrow','明日'],['kiwi','キウイ'],['lion','ライオン'],['dinosaur','恐竜'],['mouse','ネズミ'],['avocado','アボカド'],['tomato','トマト'],['message','伝言']]},
+  {m:11,w:1,title:'Happily Ever After',words:[['queen','女王'],['king','王さま'],['island','島'],['safe','安全な'],['piano','ピアノ'],['bread','パン'],['carrot','ニンジン'],['meat','お肉']]},
+  {m:11,w:2,title:'The Human Body',words:[['human','人間の'],['eye','目'],['head','頭'],['hear','聞こえる'],['hair','かみの毛'],['move','動く'],['hurt','きずつける'],['smile','ほほえむ']]},
+  {m:11,w:3,title:'Zoo Trip',words:[['Monday','月曜日'],['November','11月'],['koala','コアラ'],['five','5'],['map','地図'],['lost','道にまよった'],['shop','お店'],['clock','時計']]},
+  {m:12,w:1,title:'Christmas Preparations',words:[['December','12月'],['mom','お母さん'],['wrap','包む'],['collect','集める'],['carry','運ぶ'],['bottle','ほにゅうびん'],['coat','コート'],['baby','赤ちゃん']]},
+  {m:12,w:2,title:'Naughty or Nice',words:[['good','良い'],['bad','悪い'],['friendly','フレンドリーな'],['apologize','あやまる'],['cry','泣く'],['pen','ペン'],['fight','ケンカする'],['angry','おこっている']]},
+  {m:12,w:3,title:"Santa's Sleigh",words:[['far','遠くに'],['wide','広い'],['Earth','地球'],['children','子どもたち'],['comic','まんが本'],['backpack','リュック'],['notebook','ノート'],['train','電車']]},
+  {m:1,w:1,title:'Fashion Blogger',words:[['blog','ブログ'],['big','大きな'],['department store','デパート'],['carefully','慎重に'],['measure','はかる'],['cut','切る'],['cloth','生地'],['stylish','おしゃれな']]},
+  {m:1,w:2,title:'Alaska',words:[['Alaska','アラスカ州'],['winter','冬'],['January','1月'],['sky','空'],['sun','太陽'],['polar bear','シロクマ'],['wild','野生の'],['habitat','生息地']]},
+  {m:1,w:3,title:'Supermarket',words:[['supermarket','スーパー'],['sell','売る'],['green tea','緑茶'],['beef','牛肉'],['seafood','シーフード'],['parfait','パフェ'],['sale','セール'],['pork','ぶた肉']]},
+  {m:2,w:1,title:"Mom's Note",words:[['note','メモ'],['Thursday','木曜日'],['plate','お皿'],['spaghetti','スパゲッティ'],['tired','つかれている'],['volleyball','バレーボール'],['wash','あらう'],['trash','ごみ']]},
+  {m:2,w:2,title:'Ocean Layers',words:[['change','変化する'],['down','下へ'],['bright','明るい'],['whale','クジラ'],['deep','深い'],['video','ビデオ'],['internet','インターネット'],['scary','こわい']]},
+  {m:2,w:3,title:'Sheep Farmer',words:[['February','2月'],['uncle','おじさん'],['New Zealand','ニュージーランド'],['work','働く'],['farmer','農場の人'],['sheep','ひつじ'],['report','レポート'],['question','質問']]},
+];
+
+// 月テーマ（フレーズ・文型）。追加フォームから増やせる
+const KDUO_MONTHLY = [
+  {m:7,title:'Can you ~?',desc:'「〜できる？」とたずねる言い方。Yes, I can! / No, I can\'t. でこたえる'},
+];
+
+// ============================================================
+//  きほんの100フレーズ — 英会話教室サバイバル英語（子ども向け）
+// ============================================================
+const PHRASES100 = [
+  {cat:'あいさつ',emoji:'👋',items:[['Hello!','こんにちは！'],['Good morning!','おはよう！'],['How are you?','元気？'],["I'm good, thank you!",'元気だよ、ありがとう！'],['Nice to meet you!','はじめまして！'],['See you later!','またあとでね！'],['Goodbye!','さようなら！'],['Have a nice day!','よい一日を！'],['Welcome!','ようこそ！'],['Long time no see!','ひさしぶり！']]},
+  {cat:'じこしょうかい',emoji:'🙋',items:[['My name is Hana.','わたしの名前はハナです'],["I'm seven years old.",'7さいです'],['I like pink.','ピンクがすき'],["I don't like carrots.",'ニンジンはきらい'],['I have a dog.','犬をかっているよ'],['I live in Tokyo.','東京にすんでいるよ'],['My favorite food is sushi.','すきな食べものはおすし'],['I can swim.','およげるよ'],["I'm happy today.",'今日はうれしいな'],['This is my friend.','この子はともだちだよ']]},
+  {cat:'わからないとき',emoji:'❓',items:[['Pardon?','もういちど言って？'],['One more time, please.','もういっかいお願いします'],['Slowly, please.','ゆっくりお願いします'],['What does it mean?','どういう意味？'],['How do you say this in English?','これは英語でなんて言うの？'],["I don't know.",'わからない'],["I don't understand.",'わかりません'],["What's this?",'これなあに？'],['Is this right?','これで合ってる？'],['Can you help me?','手伝ってくれる？']]},
+  {cat:'おねがい',emoji:'🙏',items:[['Please.','おねがいします'],['Can I go to the bathroom?','トイレに行ってもいい？'],['Can I have some water?','お水をもらえますか？'],['Can I try?','やってみてもいい？'],['Help me, please.','たすけてください'],['Wait, please.','まってください'],['Look at this!','これ見て！'],['Listen, please.','聞いてください'],['Can I use this?','これ使ってもいい？'],['One more, please!','もういっこください！']]},
+  {cat:'きょうしつで',emoji:'🏫',items:[['Here you are.','はい、どうぞ'],['Thank you.','ありがとう'],["You're welcome.",'どういたしまして'],["I'm sorry.",'ごめんなさい'],['Excuse me.','すみません'],["I'm finished!",'できた！おわった！'],['Not yet.','まだだよ'],['Me too!','わたしも！'],["It's my turn.",'わたしのばんだよ'],["It's your turn.",'きみのばんだよ']]},
+  {cat:'きもち',emoji:'😊',items:[["I'm happy!",'うれしい！'],["I'm sad.",'かなしい'],["I'm tired.",'つかれた'],["I'm hungry.",'おなかすいた'],["I'm thirsty.",'のどかわいた'],["I'm excited!",'ワクワクする！'],["I'm scared.",'こわいよ'],["I'm sleepy.",'ねむいよ'],["That's fun!",'たのしい！'],['I like it!','これすき！']]},
+  {cat:'あそび',emoji:'⚽',items:[["Let's play!",'あそぼう！'],["Let's go!",'行こう！'],['Come on!','おいでよ！'],['Hurry up!','いそいで！'],['Watch out!','あぶない！'],['Good job!','よくできました！'],['You did it!','やったね！'],['I won!','かった！'],['That was close!','おしかった！'],['One more time!','もういっかい！']]},
+  {cat:'しつもん',emoji:'💬',items:[["What's your name?",'お名前は？'],['How old are you?','何さい？'],['What do you like?','何がすき？'],['Where are you from?','どこから来たの？'],['What time is it?','いま何時？'],['What day is it today?','今日は何曜日？'],["How's the weather?",'天気はどう？'],['Do you like dogs?','犬はすき？'],['Can you dance?','おどれる？'],['What are you doing?','何してるの？']]},
+  {cat:'へんじ',emoji:'👌',items:[['Yes!','うん！'],['No, thank you.','ううん、けっこうです'],['OK!','オッケー！'],['Sure!','いいよ！'],['Of course!','もちろん！'],['Maybe.','たぶんね'],['I think so.','そう思うよ'],["That's right.",'そのとおり！'],['Really?','ほんとに？'],['Wow, great!','わあ、すごい！']]},
+  {cat:'こまったとき',emoji:'🆘',items:[['I feel sick.','気分がわるいです'],['I have a headache.','頭がいたいです'],['I hurt my finger.','ゆびをけがしちゃった'],['I lost my pencil.','えんぴつをなくしちゃった'],["I can't find my bag.",'かばんが見つからない'],["It's too loud.",'うるさすぎるよ'],["I'm cold.",'さむいよ'],["I'm hot.",'あついよ'],['Stop it, please.','やめてください'],['Teacher, please come!','先生、来てください！']]},
+];
+
 // ============================================================
 //  KID VISUALS — scene tags, scene panel, hint illustration
 // ============================================================
@@ -2142,6 +2564,8 @@ const Router = {
       'settings': () => initSettings(),
       'test-select': () => renderTestHistory(),
       'accounts': () => AccountModule.renderList(),
+      'prep': () => PrepModule.render(),
+      'phrases': () => PhrasesModule.render(),
     };
     return map[id];
   },
@@ -2207,6 +2631,7 @@ const Router = {
 // ──────────────────────────────────────────────
 
 const ConvModule = {
+  prepTheme: null,   // 教室のよしゅうテーマ（会話練習用）
   messages: [],
   startTime: null,
   timerInterval: null,
@@ -2268,7 +2693,14 @@ const ConvModule = {
     const scenePanel = document.getElementById('convScenePanel');
     if (scenePanel) { scenePanel.classList.toggle('hidden', !this.isKid()); scenePanel.textContent = '👋😊'; }
 
-    const greeting = this.getGreeting(lv);
+    // 教室のよしゅうテーマ会話
+    if (this.prepTheme) {
+      document.getElementById('convTeacherSub').textContent = '🏫 ' + this.prepTheme.title;
+    }
+
+    const greeting = this.prepTheme
+      ? `Hi! Today, let's talk about "${this.prepTheme.title}"! Are you ready?`
+      : this.getGreeting(lv);
     this.addMsg('teacher', greeting);
     this.messages.push({ role: 'assistant', content: greeting });
     AudioEngine.speak(greeting, this.ttsOpts());
@@ -2319,7 +2751,10 @@ Instructions: ${lv.desc}
 - Ask ONE follow-up question to continue conversation
 - If student makes a clear grammar error, gently weave the correct form naturally into your response
 - Match vocabulary complexity to the TOEIC range
-- The student speaks via voice recognition; transcripts may contain small errors — interpret them charitably and never scold transcription mistakes
+- The student speaks via voice recognition; transcripts may contain small errors — interpret them charitably and never scold transcription mistakes${this.prepTheme ? `
+- CLASS PREP MODE: The student is preparing for an English school lesson themed "${this.prepTheme.title}". ${this.prepTheme.desc ? 'Pattern: ' + this.prepTheme.desc : ''}
+- Target words to practice: ${(this.prepTheme.words || []).map(w => w[0]).join(', ') || '(use the theme pattern)'}
+- Naturally weave these target words/pattern into the conversation. Ask simple questions that invite the student to use them. Stay on this topic.` : ''}
 - Never break character${this.isKid() ? `
 - The student is a YOUNG CHILD. Be extremely cheerful and encouraging. Praise every attempt ("Great job!", "Wonderful!").
 - Use ONLY very simple words. Very short sentences (max 8 words each, max 2 sentences).
@@ -3368,6 +3803,7 @@ const LessonSelectModule = {
   start(levelId) {
     if (EP.user) EP.user.level = levelId;
     EP.saveUser();
+    ConvModule.prepTheme = null; // 通常レッスンではテーマ会話を解除
     AudioEngine.unlock(); // user tap: unlock audio so the greeting can auto-play
     Router.go('conv', { onEnter: () => ConvModule.startWithLevel(levelId) });
   },
